@@ -1,0 +1,29 @@
+// ---------------------------------------------------------------
+// server_vr_base.qpc
+// ---------------------------------------------------------------
+
+include "$SCRIPT_DIR/shared_vr_base.qpc"
+
+macro VR_SV_DIR       "$VR_DIR/server"                  [!$VR_SV_DIR]
+
+configuration
+{
+	general
+	{
+		include_directories
+		{
+			"$VR_SV_DIR"
+		}
+	}
+}
+
+files
+{
+	folder "VR"
+	{
+		"$VR_SV_DIR/vr_sv_player.cpp"
+		"$VR_SV_DIR/vr_sv_player.h"
+	}
+}
+
+

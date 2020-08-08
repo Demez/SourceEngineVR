@@ -1,0 +1,78 @@
+// ---------------------------------------------------------------
+// client_vr_base.qpc
+// ---------------------------------------------------------------
+
+include "$SCRIPT_DIR/shared_vr_base.qpc"
+
+macro VR_CL_DIR       "$VR_DIR/client"                  [!$VR_CL_DIR]
+macro OPENVR_DIR      "$ROOT_DIR/thirdparty/openvr"     [!$OPENVR_DIR]
+macro VR_DX9          "0"                               [!$VR_DX9]
+macro USE_MINHOOK     "0"                               [!$USE_MINHOOK]  // use if using d3d9ex and you don't have engine access
+macro MINHOOK_DIR     "$SRCDIR/thirdparty/minhook"      [!$MINHOOK_DIR && $USE_MINHOOK]
+
+// maybe setup some post build event thing to copy openvr_api.dll and minhook dll to the game's bin folder?
+// not really sure
+
+configuration
+{
+	general
+	{
+		include_directories
+		{
+			"$VR_CL_DIR"
+			"$OPENVR_DIR/headers"
+			// "$MINHOOK_DIR/include" [$USE_MINHOOK]
+		}
+	}
+	
+	compiler
+	{
+		options
+		{
+			"/ignore:4005"
+		}
+	}
+	
+	linker
+	{
+		libraries
+		{
+			"$OPENVR_DIR/lib/win32/openvr_api.lib"
+			
+			// "$MINHOOK_DIR/lib/libMinHook-x86-v120-mtd.lib"      [$USE_MINHOOK && $DEBUG]
+			// "$MINHOOK_DIR/lib/libMinHook-x86-v120-mt.lib"       [$USE_MINHOOK && $RELEASE]
+			// "psapi.lib"                                         [$USE_MINHOOK]
+			
+			"d3d11.lib"
+			"d3d9.lib" [$VR_DX9]
+		}
+	}
+}
+
+files
+{
+	folder "VR"
+	{
+		// need to set this up
+		// "$VR_CL_DIR/vr_minhook.cpp"     [$USE_MINHOOK]
+		// "$VR_CL_DIR/vr_minhook.h"       [$USE_MINHOOK]
+		
+		"$VR_CL_DIR/vr_openvr.cpp"
+		{
+			precompiled_header "none"
+		}
+		
+		"$VR_CL_DIR/vr_openvr.h"
+		
+		"$VR_CL_DIR/vr.cpp"
+		"$VR_CL_DIR/vr.h"
+		"$VR_CL_DIR/vr_viewrender.cpp"
+		"$VR_CL_DIR/vr_viewrender.h"
+		"$VR_CL_DIR/vr_cl_player.cpp"
+		"$VR_CL_DIR/vr_cl_player.h"
+		"$VR_CL_DIR/vr_input.cpp"
+		"$VR_CL_DIR/vr_input.h"
+	}
+}
+
+

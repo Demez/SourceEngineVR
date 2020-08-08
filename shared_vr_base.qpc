@@ -1,0 +1,46 @@
+// ---------------------------------------------------------------
+// shared_vr_base.qpc
+// ---------------------------------------------------------------
+
+macro VR_DIR          "$SCRIPT_DIR"                     [!$VR_DIR]
+macro VR_SH_DIR       "$VR_DIR/shared"                  [!$VR_SH_DIR]
+
+configuration
+{
+	general
+	{
+		include_directories
+		{
+			"$VR_SH_DIR"
+		}
+	}
+	
+	compiler
+	{
+		preprocessor_definitions
+		{
+			"VR=1"
+		}
+	}
+	
+	linker
+	{
+		libraries
+		{
+		}
+	}
+}
+
+files
+{
+	folder "VR"
+	{
+		"$VR_SH_DIR/vr_player_shared.cpp"
+		// "$VR_SH_DIR/vr_player_shared.h"
+		"$VR_SH_DIR/vr_base_weapon.cpp"
+		"$VR_SH_DIR/vr_base_weapon.h"
+		"$VR_SH_DIR/vr_game_movement.cpp"
+		"$VR_SH_DIR/vr_game_movement.h"
+	}
+}
+
