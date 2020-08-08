@@ -186,59 +186,6 @@ void CVRViewRender::Render( vrect_t *rect )
 }
 
 
-Vector AngToVec( QAngle angle )
-{
-	Vector vec;
-	vec.x = angle.x;
-	vec.y = angle.y;
-	vec.z = angle.z;
-	return vec;
-}
-
-
-VMatrix WorldToLocal( Vector position, QAngle angle, Vector newSystemOrigin, QAngle newSystemAngles )
-{
-	VMatrix worldTransform;
-	worldTransform.SetupMatrixAngles(angle);
-	worldTransform.SetTranslation(position);
-	// worldTransform.SetupMatrixOrgAngles(position, angle);
-	Vector penis1 = worldTransform.GetTranslation();
-
-	VMatrix objectTransform;
-	objectTransform.SetTranslation(newSystemOrigin);
-	// objectTransform.SetupMatrixOrgAngles(newSystemOrigin, newSystemAngles);
-	Vector penis2 = objectTransform.GetTranslation();
-
-	VMatrix inverse;
-	// objectTransform.InverseTR(inverse);
-	if (!worldTransform.InverseGeneral(inverse))
-		Msg("bruh wtf\n");
-
-	Vector penis = inverse.GetTranslation();
-
-	VMatrix worldToLocal = inverse * objectTransform;
-	return worldToLocal;
-}
-
-
-VMatrix LocalToWorld( Vector position, QAngle angle, Vector newSystemOrigin, QAngle newSystemAngles )
-{
-	VMatrix localTransform;
-	// worldTransform.SetTranslation(position);
-	// worldTransform.SetupMatrixAngles(angle);
-	localTransform.SetupMatrixOrgAngles(position, angle);
-	Vector penis1 = localTransform.GetTranslation();
-
-	VMatrix worldTransform;
-	// objectTransform.SetTranslation(newSystemOrigin);
-	worldTransform.SetupMatrixOrgAngles(newSystemOrigin, newSystemAngles);
-	Vector penis2 = worldTransform.GetTranslation();
-
-	VMatrix localToWorld = worldTransform * localTransform;
-	return localToWorld;
-}
-
-
 void CVRViewRender::PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &screenView, VREye eye )
 {
 	if ( g_VR.active )
