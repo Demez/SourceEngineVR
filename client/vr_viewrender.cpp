@@ -349,8 +349,6 @@ void CVRViewRender::RenderView( const CViewSetup &view, int nClearFlags, int wha
 			);
 		}
 #endif
-
-		// pRenderContext->CullMode( MATERIAL_CULLMODE_CCW );
 	}
 	else
 	{

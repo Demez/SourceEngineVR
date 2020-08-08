@@ -25,13 +25,6 @@ enum class VREye
 	EyeRight
 };
 
-// Which texture is being requested in GetRenderTarget?
-enum class VRRT
-{
-	Color = 0,
-	Depth,
-};
-
 
 // a bit messy
 class VRSystem : public CAutoGameSystemPerFrame
@@ -63,8 +56,6 @@ public:
 
 	bool                    ClientStart();
 	bool                    ClientExit();
-
-	void                    NextFrame();
 
 	// why do i need this defined in a header file for vr_viewrender.cpp
 	void Submit( ITexture* leftEye, ITexture* rightEye )

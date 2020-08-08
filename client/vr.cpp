@@ -77,7 +77,9 @@ void VRSystem::Update( float frametime )
 		return;
 
 	currentViewParams = OVR_GetViewParameters();
-	NextFrame();
+	OVR_UpdatePosesAndActions();
+	UpdateTrackers();
+	UpdateActions();
 }
 
 void VRSystem::LevelInitPostEntity()
@@ -162,7 +164,7 @@ bool VRSystem::ClientStart()
 
 	active = true;
 
-	NextFrame();
+	Update( 0.0 );
 	return true;
 }
 
@@ -172,14 +174,6 @@ bool VRSystem::ClientExit()
 	active = false;
 	OVR_Shutdown();
 	return true;
-}
-
-
-void VRSystem::NextFrame()
-{
-	OVR_UpdatePosesAndActions();
-	UpdateTrackers();
-	UpdateActions();
 }
 
 
