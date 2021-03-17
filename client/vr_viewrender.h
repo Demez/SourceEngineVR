@@ -21,9 +21,14 @@ class CVRViewRender : public VR_BASE_VIEW_RENDER
 public:
 	CVRViewRender();
 
+	virtual void LevelInit( void );
+	virtual void LevelShutdown( void );
+
 	virtual void Render( vrect_t *rect );
 
 	virtual void RenderView( const CViewSetup &view, int nClearFlags, int whatToDraw );
+	virtual void RenderView( const CViewSetup &view, const CViewSetup &hudView, int nClearFlags, int whatToDraw );
+
 	// virtual void RenderViewEye( const CViewSetup &view, int nClearFlags, int whatToDraw, ITexture* rt, ITexture* depth );
 
 	virtual void PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &screenView, VREye eye );
@@ -50,6 +55,8 @@ public:
 
 	int lastWidth;
 	int lastHeight;
+
+	bool m_bIsInEyeRender;
 };
 
 

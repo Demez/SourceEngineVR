@@ -8,7 +8,8 @@
 #include "cbase.h"
 
 #include "vr_sv_player.h"
-// #include "vr_sv_base_weapon.h"
+#include "vr_tracker.h"
+#include "vr_controller.h"
 
 #include "predicted_viewmodel.h"
 #include "iservervehicle.h"
@@ -17,9 +18,14 @@
 #include "GameStats.h"
 #include "obstacle_pushaway.h"
 #include "in_buttons.h"
+#include "igamemovement.h"
+#include "vr_util.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+
+extern CMoveData* g_pMoveData;
 
 
 // -------------------------------------------------------------------------------- //
@@ -55,7 +61,6 @@ END_SEND_TABLE()*/
 
 
 BEGIN_DATADESC( CVRBasePlayer )
-DEFINE_THINKFUNC( SDKPushawayThink ),
 END_DATADESC()
 
 // main table
@@ -91,24 +96,11 @@ void CVRBasePlayer::PreThink(void)
 void CVRBasePlayer::PostThink()
 {
 	BaseClass::PostThink();
-
-	QAngle angles = GetLocalAngles();
-	angles[PITCH] = 0;
-	SetLocalAngles( angles );
 	
 	// Store the eye angles pitch so the client can compute its animation state correctly.
 	// m_angEyeAngles = EyeAngles();
 
     // m_PlayerAnimState->Update( m_angEyeAngles[YAW], m_angEyeAngles[PITCH] );
-}
-
-
-
-#define SDK_PUSHAWAY_THINK_CONTEXT	"SDKPushawayThink"
-void CVRBasePlayer::SDKPushawayThink( void )
-{
-	// Push physics props out of our way.
-	PerformObstaclePushaway( this );
 }
 
 
@@ -123,66 +115,79 @@ void CVRBasePlayer::Spawn()
 }
 
 
-CVRBaseCombatWeapon* CVRBasePlayer::GetActiveSDKWeapon() const
+void CVRBasePlayer::SendUseEvent( CBaseEntity* pUseEntity )
 {
-	return dynamic_cast< CVRBaseCombatWeapon* >( GetActiveWeapon() );
-}
-
-
-void CVRBasePlayer::CreateViewModel( int index /*=0*/ )
-{
-	Assert( index >= 0 && index < MAX_VIEWMODELS );
-
-	if ( GetViewModel( index ) )
+	if ( !pUseEntity )
 		return;
 
-	CPredictedViewModel *vm = ( CPredictedViewModel * )CreateEntityByName( "predicted_viewmodel" );
-	if ( vm )
+	//!!!UNDONE: traceline here to prevent +USEing buttons through walls			
+
+	int caps = pUseEntity->ObjectCaps();
+	variant_t emptyVariant;
+	// if ( ( (m_nButtons & IN_USE) && (caps & FCAP_CONTINUOUS_USE) ) || ( (m_afButtonPressed & IN_USE) && (caps & (FCAP_IMPULSE_USE|FCAP_ONOFF_USE)) ) )
+	if ( ( (m_nButtons & IN_USE) && (caps & FCAP_CONTINUOUS_USE) ) || ( (caps & (FCAP_IMPULSE_USE|FCAP_ONOFF_USE)) ) )
 	{
-		vm->SetAbsOrigin( GetAbsOrigin() );
-		vm->SetOwner( this );
-		vm->SetIndex( index );
-		DispatchSpawn( vm );
-		vm->FollowEntity( this, false );
-		m_hViewModel.Set( index, vm );
+		if ( caps & FCAP_CONTINUOUS_USE )
+		{
+			m_afPhysicsFlags |= PFLAG_USING;
+		}
+
+		if ( pUseEntity->ObjectCaps() & FCAP_ONOFF_USE )
+		{
+			pUseEntity->AcceptInput( "Use", this, this, emptyVariant, USE_ON );
+		}
+		else
+		{
+			pUseEntity->AcceptInput( "Use", this, this, emptyVariant, USE_TOGGLE );
+		}
+	}
+	// UNDONE: Send different USE codes for ON/OFF.  Cache last ONOFF_USE object to send 'off' if you turn away
+	// else if ( (m_afButtonReleased & IN_USE) && (pUseEntity->ObjectCaps() & FCAP_ONOFF_USE) )	// BUGBUG This is an "off" use
+	else if ( pUseEntity->ObjectCaps() & FCAP_ONOFF_USE )	// BUGBUG This is an "off" use
+	{
+		pUseEntity->AcceptInput( "Use", this, this, emptyVariant, USE_OFF );
 	}
 }
 
 
-// might do something with this, idk
-bool CVRBasePlayer::ClientCommand( const CCommand &args )
+void CVRBasePlayer::PlayerUse()
 {
-	return BaseClass::ClientCommand( args );
+	if ( !m_bInVR )
+	{
+		BaseClass::PlayerUse();
+		return;
+	}
 
-	const char *pcmd = args[0];
-	
-	if ( FStrEq( pcmd, "menuopen" ) )
+	CBaseEntity* pUseEntity = NULL;
+	if ( g_pMoveData->m_nButtons & IN_PICKUP_LEFT && GetLeftHand() )
 	{
-#if defined ( SDK_USE_PLAYERCLASSES )
-		SetClassMenuOpen( true );
-#endif
-		return true;
+		SendUseEvent( GetLeftHand()->FindUseEntity() );
 	}
-	else if ( FStrEq( pcmd, "menuclosed" ) )
+
+	if ( g_pMoveData->m_nButtons & IN_PICKUP_RIGHT && GetRightHand() )
 	{
-#if defined ( SDK_USE_PLAYERCLASSES )
-		SetClassMenuOpen( false );
-#endif
-		return true;
-	}
-	else if ( FStrEq( pcmd, "droptest" ) )
-	{
-		// ThrowActiveWeapon();
-		return true;
+		SendUseEvent( GetRightHand()->FindUseEntity() );
 	}
 }
 
 
+void CVRBasePlayer::PickupObject( CBaseEntity *pObject, bool bLimitMassAndSize )
+{
+	if ( !m_bInVR )
+	{
+		BaseClass::PickupObject( pObject, bLimitMassAndSize );
+		return;
+	}
 
-
-// ------------------------------------------------------------------------------------------------
-// Modified Functions if in VR
-// ------------------------------------------------------------------------------------------------
+	if ( g_pMoveData->m_nButtons & IN_PICKUP_LEFT && GetLeftHand() && GetLeftHand()->GetLastUseEntity() == pObject )
+	{
+		GetLeftHand()->GrabObject( pObject );
+	}
+	else if ( g_pMoveData->m_nButtons & IN_PICKUP_RIGHT && GetRightHand() && GetRightHand()->GetLastUseEntity() == pObject )
+	{
+		GetRightHand()->GrabObject( pObject );
+	}
+}
 
 
 

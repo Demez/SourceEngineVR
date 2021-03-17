@@ -23,7 +23,7 @@ class CVRBasePlayer;
 //
 // Weapon IDs for all SDK Game weapons
 //
-typedef enum
+/*typedef enum
 {
 	WEAPON_NONE = 0,
 
@@ -32,7 +32,7 @@ typedef enum
 	WEAPON_GRENADE,
 	
 	WEAPON_MAX,		// number of weapons weapon index
-} SDKWeaponID;
+} SDKWeaponID;*/
 
 typedef enum
 {
@@ -58,7 +58,7 @@ public:
 
 	// All predicted weapons need to implement and return true
 	virtual bool	IsPredicted() const { return true; }
-	virtual SDKWeaponID GetWeaponID( void ) const { return WEAPON_NONE; }
+	// virtual SDKWeaponID GetWeaponID( void ) const { return WEAPON_NONE; }
 	
 	// Get SDK weapon specific weapon data.
 	// CSDKWeaponInfo const	&GetSDKWpnData() const;

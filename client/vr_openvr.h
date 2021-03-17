@@ -7,17 +7,21 @@
 #include "tier1/utlvector.h"
 #include "tier1/utldict.h"
 #include "mathlib/vector.h"
+#include "mathlib/vmatrix.h"
 // #include "tier1/interface.h"
 // #include "appframework/IAppSystem.h"
 
 #include <openvr.h>
+#include "vr_util.h"
 
 
-class VRTracker
+struct VRHostTracker
 {
-public:
     const char* name;
-    Vector pos;
+    VMatrix mat;
+    VMatrix matconv;    // converted to source's coordinate system
+    Vector pos;         // converted to source's coordinate system
+    Vector posraw;      // position from whatever is setup for calculating this
     Vector vel;
     QAngle ang;
     QAngle angvel;
@@ -47,7 +51,7 @@ enum class VRAction
 {
     None = -1,
     Boolean,
-    Vector1,
+    Vector1, // rename to Analog?
     Vector2,
     Skeleton,
 };
@@ -84,32 +88,31 @@ typedef struct VRSkeletonAction: VRBaseAction {
 } VRSkeletonAction;
 
 
-bool            OVR_Enabled();
-bool            OVR_IsHMDPresent();
+extern vr::IVRSystem*          g_pOpenVR;
 
-int             OVR_Init();
+
+bool            OVR_NeedD3DInit();
 int             OVR_Shutdown();
-int             OVR_GetVersion();
+void            OVR_SetupFOVOffset();
 
 int             OVR_SetActionManifest( const char* fileName );
 int             OVR_TriggerHaptic( const char* actionName );
 
-// void            VRMOD_SetActiveActionSets(const char* actionSetName, ...);
 void            OVR_AddActiveActionSet(const char* actionSetName);
 void            OVR_ResetActiveActionSets();
 void            OVR_UpdatePosesAndActions();
 
-void            OVR_GetPoses( CUtlVector< VRTracker* > &trackers );
+void            OVR_GetPoses( CUtlVector< VRHostTracker* > &trackers );
 void            OVR_GetActions( CUtlVector< VRBaseAction* > &actions );
 
 void            OVR_Submit( void* submitData, vr::EVREye eye );
-void            OVR_DX9EXToDX11( void* deviceData, void* leftEyeData, void* rightEyeData );
+
+void            OVR_InitDX9Device( void* deviceData );
+void            OVR_DX9EXToDX11( void* leftEyeData, void* rightEyeData );
 
 // VRBaseAction*   OVR_GetActions();
 
 VRViewParams    OVR_GetViewParameters();
-
-vr::HmdMatrix44_t OVR_GetProjectionMatrix( vr::EVREye eye, float nearZ, float farZ );
 
 
 

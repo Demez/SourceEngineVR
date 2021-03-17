@@ -35,12 +35,25 @@ files
 {
 	folder "VR"
 	{
+		"$VR_SH_DIR/usercmd.cpp"
+		"$VR_SH_DIR/usercmd.h"
+		
 		"$VR_SH_DIR/vr_player_shared.cpp"
-		// "$VR_SH_DIR/vr_player_shared.h"
+		"$VR_SH_DIR/vr_player_shared.h"
 		"$VR_SH_DIR/vr_base_weapon.cpp"
 		"$VR_SH_DIR/vr_base_weapon.h"
-		"$VR_SH_DIR/vr_game_movement.cpp"
-		"$VR_SH_DIR/vr_game_movement.h"
+		"$VR_SH_DIR/vr_gamemovement.cpp"
+		"$VR_SH_DIR/vr_gamemovement.h"
+		
+		"$VR_SH_DIR/vr_usercmd.cpp"
+		"$VR_SH_DIR/vr_usercmd.h"
+		"$VR_SH_DIR/vr_util.cpp"
+		"$VR_SH_DIR/vr_util.h"
+		
+		"$VR_SH_DIR/vr_tracker.cpp"
+		"$VR_SH_DIR/vr_tracker.h"
+		"$VR_SH_DIR/vr_controller.cpp"
+		"$VR_SH_DIR/vr_controller.h"
 	}
 }
 

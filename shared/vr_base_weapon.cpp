@@ -39,7 +39,7 @@ int AliasToWeaponID( const char *alias )
 				return i;
 	}
 
-	return WEAPON_NONE;
+	return -1;
 }
 
 //--------------------------------------------------------------------------------------------------------
@@ -48,7 +48,7 @@ int AliasToWeaponID( const char *alias )
 //
 const char *WeaponIDToAlias( int id )
 {
-	if ( (id >= WEAPON_MAX) || (id < 0) )
+	if ( (id >= 32) || (id < 0) )
 		return NULL;
 
 	return s_WeaponAliasInfo[id];
@@ -132,12 +132,12 @@ void CVRBaseCombatWeapon::SendReloadEvents()
 		return;
 
 	// Send a message to any clients that have this entity to play the reload.
-	CPASFilter filter( pPlayer->GetAbsOrigin() );
+	/*CPASFilter filter( pPlayer->GetAbsOrigin() );
 	filter.RemoveRecipient( pPlayer );
 
 	UserMessageBegin( filter, "ReloadEffect" );
 	WRITE_SHORT( pPlayer->entindex() );
-	MessageEnd();
+	MessageEnd();*/
 
 	// Make the player play his reload animation.
 	// pPlayer->DoAnimationEvent( PLAYERANIMEVENT_RELOAD );

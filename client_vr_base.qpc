@@ -5,7 +5,8 @@
 include "$SCRIPT_DIR/shared_vr_base.qpc"
 
 macro VR_CL_DIR       "$VR_DIR/client"                  [!$VR_CL_DIR]
-macro OPENVR_DIR      "$ROOT_DIR/thirdparty/openvr"     [!$OPENVR_DIR]
+// macro OPENVR_DIR      "$ROOT_DIR/thirdparty/openvr"     [!$OPENVR_DIR]
+macro OPENVR_DIR      "$SCRIPT_DIR/openvr"              [!$OPENVR_DIR]
 macro VR_DX9          "0"                               [!$VR_DX9]
 macro USE_MINHOOK     "0"                               [!$USE_MINHOOK]  // use if using d3d9ex and you don't have engine access
 macro MINHOOK_DIR     "$SRCDIR/thirdparty/minhook"      [!$MINHOOK_DIR && $USE_MINHOOK]
@@ -43,8 +44,9 @@ configuration
 			// "$MINHOOK_DIR/lib/libMinHook-x86-v120-mt.lib"       [$USE_MINHOOK && $RELEASE]
 			// "psapi.lib"                                         [$USE_MINHOOK]
 			
+			"dxgi.lib"
 			"d3d11.lib"
-			"d3d9.lib" [$VR_DX9]
+			"d3d9.lib" // [$VR_DX9]
 		}
 	}
 }
@@ -72,6 +74,10 @@ files
 		"$VR_CL_DIR/vr_cl_player.h"
 		"$VR_CL_DIR/vr_input.cpp"
 		"$VR_CL_DIR/vr_input.h"
+		"$VR_CL_DIR/vr_clientmode.cpp"
+		"$VR_CL_DIR/vr_clientmode.h"
+		"$VR_CL_DIR/vr_prediction.cpp"
+		"$VR_CL_DIR/vr_prediction.h"
 	}
 }
 

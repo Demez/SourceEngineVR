@@ -11,6 +11,26 @@
 	#include "vr_sv_player.h"
 #endif
 
+
+class CVRMoveData: public CMoveData
+{
+public:
+	bool						vr_active;
+	float						vr_viewRotation;
+	Vector						vr_hmdOrigin;
+	Vector						vr_hmdOriginOffset;
+	CUtlVector< CmdVRTracker >	vr_trackers;
+};
+
+
+CVRMoveData* GetVRMoveData();
+
+inline CVRMoveData* ToVRMoveData( CMoveData* move )
+{
+	return (CVRMoveData*)move;
+}
+
+
 //-----------------------------------------------------------------------------
 // Purpose: VR specific movement code
 //-----------------------------------------------------------------------------
@@ -21,9 +41,13 @@ public:
 
 	CVRGameMovement();
 
-	virtual void            ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove );
-
+	CVRMoveData*            GetVRMoveData();
 	CVRBasePlayer*          GetVRPlayer();
+
+	virtual void            ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove );
+	virtual void            PlayerMove();
+
+	Vector					m_oldViewPos;
 };
 
 

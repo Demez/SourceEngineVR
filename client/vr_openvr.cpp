@@ -19,6 +19,10 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+// =====================================================================================
+// TODO: merge this into CVRSystem
+// =====================================================================================
+
 // ========================================================================
 // All Credit for this goes to catsethecat:
 // https://steamcommunity.com/sharedfiles/filedetails/?id=1678408548
@@ -53,7 +57,7 @@ typedef struct {
     char name[MAX_STR_LEN];
 }actionSet;
 
-vr::IVRSystem*          g_pSystem = NULL;
+vr::IVRSystem*          g_pOpenVR = NULL;
 vr::IVRInput*           g_pInput = NULL;
 vr::TrackedDevicePose_t g_poses[vr::k_unMaxTrackedDeviceCount];
 actionSet               g_actionSets[MAX_ACTIONSETS];
@@ -82,51 +86,15 @@ float                   g_verticalOffsetLeft = 0;
 float                   g_verticalOffsetRight = 0;
 
 
-bool OVR_Enabled()
+bool OVR_NeedD3DInit()
 {
-    return false;
+    return (g_d3d9Device == NULL);
 }
 
 
-// ========================================================================
-// 
-// ========================================================================
-int OVR_GetVersion()
+void OVR_SetupFOVOffset()
 {
-    return 1;
-}
-
-// ========================================================================
-// 
-// ========================================================================
-bool OVR_IsHMDPresent()
-{
-    return vr::VR_IsHmdPresent();
-}
-
-
-// ========================================================================
-// 
-// ========================================================================
-int OVR_Init()
-{
-    vr::HmdError error = vr::VRInitError_None;
-
-    g_pSystem = vr::VR_Init(&error, vr::VRApplication_Scene);
-    if (error != vr::VRInitError_None)
-    {
-        // would be nice if i could print out the enum name
-        Warning("[VR] VR_Init failed - Error Code %d\n", error);
-        return -1;
-    }
-
-    if (!vr::VRCompositor())
-    {
-        Warning("[VR] VRCompositor failed\n");
-        return -1;
-    }
-
-    vr::HmdMatrix44_t proj = g_pSystem->GetProjectionMatrix(vr::EVREye::Eye_Left, 1, 10);
+    vr::HmdMatrix44_t proj = g_pOpenVR->GetProjectionMatrix(vr::EVREye::Eye_Left, 1, 10);
     float xscale = proj.m[0][0];
     float xoffset = proj.m[0][2];
     float yscale = proj.m[1][1];
@@ -143,7 +111,7 @@ int OVR_Init()
     g_horizontalOffsetLeft = xoffset;
     g_verticalOffsetLeft = yoffset;
 
-    proj = g_pSystem->GetProjectionMatrix(vr::EVREye::Eye_Right, 1, 10);
+    proj = g_pOpenVR->GetProjectionMatrix(vr::EVREye::Eye_Right, 1, 10);
     xscale = proj.m[0][0];
     xoffset = proj.m[0][2];
     yscale = proj.m[1][1];
@@ -158,14 +126,33 @@ int OVR_Init()
     g_aspectRatioRight = w / h;
     g_horizontalOffsetRight = xoffset;
     g_verticalOffsetRight = yoffset;
-
-    return 0;
 }
 
 
-vr::HmdMatrix44_t OVR_GetProjectionMatrix( vr::EVREye eye, float nearZ, float farZ )
+// ========================================================================
+// 
+// ========================================================================
+int OVR_Init()
 {
-    return g_pSystem->GetProjectionMatrix( eye, nearZ, farZ );
+    vr::HmdError error = vr::VRInitError_None;
+
+    g_pOpenVR = vr::VR_Init(&error, vr::VRApplication_Scene);
+    if (error != vr::VRInitError_None)
+    {
+        // would be nice if i could print out the enum name
+        Warning("[VR] VR_Init failed - Error Code %d\n", error);
+        return -1;
+    }
+
+    if (!vr::VRCompositor())
+    {
+        Warning("[VR] VRCompositor failed\n");
+        return -1;
+    }
+
+    OVR_SetupFOVOffset();
+
+    return 0;
 }
 
 
@@ -205,7 +192,9 @@ void OVR_Submit( void* submitData, vr::EVREye eye )
 
     vr::VRTextureBounds_t textureBounds;
 
-    if ( eye == vr::EVREye::Eye_Left )
+    // TODO: use this one here and figure out wtf is going on with the ipd
+
+   /* if ( eye == vr::EVREye::Eye_Left )
     {
         textureBounds.uMin = 0.0f + g_horizontalOffsetLeft * 0.25f;
         textureBounds.uMax = 1.0f + g_horizontalOffsetLeft * 0.25f;
@@ -217,10 +206,28 @@ void OVR_Submit( void* submitData, vr::EVREye eye )
         // textureBounds.uMin = 0.5f + g_horizontalOffsetRight * 0.25f;
         // textureBounds.uMax = 1.0f + g_horizontalOffsetRight * 0.25f;
 
-        textureBounds.uMin = 0.0f + g_horizontalOffsetRight * 0.725f;
+        textureBounds.uMin = 0.0f + g_horizontalOffsetRight * 0.25f;
         textureBounds.uMax = 1.0f + g_horizontalOffsetRight * 0.25f;
         textureBounds.vMin = 0.0f - g_verticalOffsetRight * 0.5f;
         textureBounds.vMax = 1.0f - g_verticalOffsetRight * 0.5f;
+    }*/
+    
+    if ( eye == vr::EVREye::Eye_Left )
+    {
+        textureBounds.uMin = 0.0f + (g_horizontalOffsetLeft * 0.5); // * 0.5f;
+        textureBounds.uMax = 1.0f + (g_horizontalOffsetLeft * 0.5); // * 0.5f;
+        textureBounds.vMin = 0.0f - g_verticalOffsetLeft; // * 0.5f;
+        textureBounds.vMax = 1.0f - g_verticalOffsetLeft; // * 0.5f;
+    }
+    else
+    {
+        // textureBounds.uMin = 0.5f + g_horizontalOffsetRight * 0.25f;
+        // textureBounds.uMax = 1.0f + g_horizontalOffsetRight * 0.25f;
+
+        textureBounds.uMin = 0.0f + (g_horizontalOffsetRight * 0.5); // * 0.5f;
+        textureBounds.uMax = 1.0f + (g_horizontalOffsetRight * 0.5); // * 0.5f;
+        textureBounds.vMin = 0.0f - g_verticalOffsetRight; // * 0.5f;
+        textureBounds.vMax = 1.0f - g_verticalOffsetRight; // * 0.5f;
     }
 
     vr::EVRCompositorError error = vr::VRCompositor()->Submit( eye, &vrTexture, &textureBounds );
@@ -232,14 +239,50 @@ void OVR_Submit( void* submitData, vr::EVREye eye )
 }
 
 
-void OVR_DX9EXToDX11( void* deviceData, void* leftEyeData, void* rightEyeData )
+void OVR_InitDX9Device( void* deviceData )
 {
-    if ( D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, NULL, NULL, D3D11_SDK_VERSION, &g_d3d11Device, NULL, NULL) != S_OK )
+    IDXGIFactory1* pFactory = nullptr;
+    IDXGIAdapter1* pRecommendedAdapter = nullptr;
+    HRESULT hr = CreateDXGIFactory1( __uuidof(IDXGIFactory1), (void**)(&pFactory) );
+
+    if (SUCCEEDED(hr))
+    {
+        IDXGIAdapter1* pAdapter;
+        UINT index = 0;
+        while ( pFactory->EnumAdapters1(index, &pAdapter) != DXGI_ERROR_NOT_FOUND )
+        {
+            DXGI_ADAPTER_DESC1 desc;
+            pAdapter->GetDesc1(&desc);
+            if (desc.VendorId == 0x10de || desc.VendorId == 0x1002)
+            {
+                pRecommendedAdapter = pAdapter;
+                pRecommendedAdapter->AddRef();
+                DevMsg("Found adapter %ws, GPU Mem: %zu MiB, Sys Mem: %zu MiB, Shared Mem: %zu MiB",
+                    desc.Description,
+                    desc.DedicatedVideoMemory / (1024 * 1024),
+                    desc.DedicatedSystemMemory / (1024 * 1024),
+                    desc.SharedSystemMemory / (1024 * 1024));
+            }
+            // pAdapter->Release();
+            // index++;
+            break;
+        }
+        pFactory->Release();
+    }
+
+	// if ( D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, NULL, NULL, D3D11_SDK_VERSION, &g_d3d11Device, NULL, NULL) != S_OK )
+    if ( D3D11CreateDevice(pRecommendedAdapter, D3D_DRIVER_TYPE_UNKNOWN, NULL, 0, NULL, NULL, D3D11_SDK_VERSION, &g_d3d11Device, NULL, NULL) != S_OK )
     {
         Warning("D3D11CreateDevice failed\n");
     }
 
     g_d3d9Device = (IDirect3DDevice9*)deviceData;
+}
+
+
+
+void OVR_DX9EXToDX11( void* leftEyeData, void* rightEyeData )
+{
     HANDLE leftEyeHandle = (HANDLE)leftEyeData;
     HANDLE rightEyeHandle = (HANDLE)rightEyeData;
 
@@ -284,6 +327,13 @@ int OVR_SetActionManifest(const char* fileName)
     // maybe loop through these paths for all possible action sets?
     // having a specific search path key is a bit shit, but i can't use multiple with openvr
     g_pFullFileSystem->GetSearchPath( "VR", false, currentDir, MAX_STR_LEN );
+
+    if ( V_strcmp(currentDir, "") == 0 )
+    {
+        // TODO: iterate through the search paths until we find one?
+        g_pFullFileSystem->GetSearchPath( "MOD", false, currentDir, MAX_STR_LEN );
+    }
+
     char *pSeperator = strchr( currentDir, ';' );
     if ( pSeperator )
         *pSeperator = '\0';
@@ -400,13 +450,13 @@ VRViewParams OVR_GetViewParameters()
 
     uint32_t recommendedWidth = 0;
     uint32_t recommendedHeight = 0;
-    g_pSystem->GetRecommendedRenderTargetSize(&recommendedWidth, &recommendedHeight);
+    g_pOpenVR->GetRecommendedRenderTargetSize(&recommendedWidth, &recommendedHeight);
 
     viewParams.rtWidth = recommendedWidth;
     viewParams.rtHeight = recommendedHeight;
 
-    vr::HmdMatrix34_t eyeToHeadLeft = g_pSystem->GetEyeToHeadTransform(vr::Eye_Left);
-    vr::HmdMatrix34_t eyeToHeadRight = g_pSystem->GetEyeToHeadTransform(vr::Eye_Right);
+    vr::HmdMatrix34_t eyeToHeadLeft = g_pOpenVR->GetEyeToHeadTransform(vr::Eye_Left);
+    vr::HmdMatrix34_t eyeToHeadRight = g_pOpenVR->GetEyeToHeadTransform(vr::Eye_Right);
     Vector eyeToHeadTransformPos;
     eyeToHeadTransformPos.x = eyeToHeadLeft.m[0][3];
     eyeToHeadTransformPos.y = eyeToHeadLeft.m[1][3];
@@ -439,9 +489,9 @@ void OVR_UpdatePosesAndActions()
 }
 
 // ========================================================================
-// This is all dumped into g_VR.tracking, fun
+// dumped into g_VR.m_currentTrackers
 // ========================================================================
-void OVR_GetPoses( CUtlVector< VRTracker* > &trackers )
+void OVR_GetPoses( CUtlVector< VRHostTracker* > &trackers )
 {
     vr::InputPoseActionData_t poseActionData;
     vr::TrackedDevicePose_t pose;
@@ -474,12 +524,20 @@ void OVR_GetPoses( CUtlVector< VRTracker* > &trackers )
         {
             vr::HmdMatrix34_t mat = pose.mDeviceToAbsoluteTracking;
 
-            struct VRTracker* tracker = (struct VRTracker*) malloc(sizeof(struct VRTracker));
+            struct VRHostTracker* tracker = (struct VRHostTracker*) malloc(sizeof(struct VRHostTracker));
             tracker->name = strdup(poseName);
 
-            tracker->pos.x = -mat.m[2][3];
-            tracker->pos.y = -mat.m[0][3];
-            tracker->pos.z = mat.m[1][3];
+            tracker->mat = VMatrixFrom34( mat.m );
+            tracker->matconv = OpenVRToSourceCoordinateSystem( tracker->mat );
+
+            tracker->pos.x = tracker->matconv[0][3];
+            tracker->pos.y = tracker->matconv[1][3];
+            tracker->pos.z = tracker->matconv[2][3];
+
+            // should i used the converted coordinates for this? maybe
+            tracker->posraw.x = -mat.m[2][3];
+            tracker->posraw.y = -mat.m[0][3];
+            tracker->posraw.z = mat.m[1][3];
 
             tracker->ang.x = asin(mat.m[1][2]) * (180.0 / 3.141592654);
             tracker->ang.y = atan2f(mat.m[0][2], mat.m[2][2]) * (180.0 / 3.141592654);
@@ -501,7 +559,7 @@ void OVR_GetPoses( CUtlVector< VRTracker* > &trackers )
 
 
 // ========================================================================
-//  Used in g_VR.input
+// dumped into g_VR.m_currentActions
 // ========================================================================
 void OVR_GetActions( CUtlVector< VRBaseAction* > &actions )
 {
@@ -511,19 +569,12 @@ void OVR_GetActions( CUtlVector< VRBaseAction* > &actions )
 
     struct VRBaseAction* prevAction = NULL;
 
-    // return;
-
-    // i severly fucked something up here
-    // calling this just causes something else to shit itself in memory shortly after
-    // can i not use malloc on a struct here?
-    // ok even "new" causes this to die, wtf is going on
-
     for (int i = 0; i < g_actionCount; i++)
     {
         VRBaseAction* currentAction = NULL; 
 
         // this is probably pretty slow and stupid
-        // allocating a lot of memory and freeing it every frame
+        // allocating memory and freeing it every frame
         // just for something this simple
 
         if (strcmp(g_actions[i].type, "boolean") == 0)
@@ -585,9 +636,9 @@ void OVR_GetActions( CUtlVector< VRBaseAction* > &actions )
 // ========================================================================
 int OVR_Shutdown()
 {
-    if (g_pSystem != NULL) {
+    if (g_pOpenVR != NULL) {
         vr::VR_Shutdown();
-        g_pSystem = NULL;
+        g_pOpenVR = NULL;
     }
     if (g_d3d11Device != NULL) {
         g_d3d11Device->Release();

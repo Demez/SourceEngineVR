@@ -1,62 +1,70 @@
-#ifndef SDK_PLAYER_SHARED_H
-#define SDK_PLAYER_SHARED_H
+#ifndef VR_PLAYER_SHARED_H
+#define VR_PLAYER_SHARED_H
 #ifdef _WIN32
 #pragma once
 #endif
 
-// useless file?
-
-#include "networkvar.h"
-#include "vr_base_weapon.h"
-
 #ifdef CLIENT_DLL
-class C_VRBasePlayer;
+#include "c_baseplayer.h"
+#include "vr.h"
+#define CVRTracker C_VRTracker
+#define CVRController C_VRController
 #else
-class CVRBasePlayer;
+#include "player.h"
+#include "physics_bone_follower.h"
 #endif
 
-// tf is this?
-class CVRBasePlayerShared
+// #include "vr_tracker.h"
+class CVRTracker;
+class CVRController;
+
+// #include "c_hl2_playerlocaldata.h"
+// #include "vr_game_movement.h"
+
+// handle shared code between client and server
+class CVRBasePlayerShared : public CBasePlayer
 {
 public:
+	DECLARE_CLASS( CVRBasePlayerShared, CBasePlayer );
+	// DECLARE_PREDICTABLE();
 
-#ifdef CLIENT_DLL
-	friend class C_VRBasePlayer;
-	typedef C_VRBasePlayer OuterClass;
-	DECLARE_PREDICTABLE();
-#else
-	friend class CVRBasePlayer;
-	typedef CVRBasePlayer OuterClass;
+	virtual void                    Spawn();
+
+#ifdef GAME_DLL
+	virtual bool                    CreateVPhysics();
+	void                            InitBoneFollowers();
 #endif
 
-	DECLARE_EMBEDDED_NETWORKVAR()
-	DECLARE_CLASS_NOBASE( CVRBasePlayerShared );
+	virtual void                    VRThink();
 
-	CVRBasePlayerShared();
-	~CVRBasePlayerShared();
+	virtual void                    HandleVRMoveData();
 
-	void	Init( OuterClass *pOuter );
+	CVRTracker*                     CreateTracker(CmdVRTracker& cmdTracker);
+	CVRTracker*                     GetTracker(const char* name);
 
-	bool	IsJumping( void ) { return m_bJumping; }
-	void	SetJumping( bool bJumping );
+	inline CVRTracker*              GetHeadset()    { return GetTracker("hmd"); }
+	inline CVRController*           GetLeftHand()   { return (CVRController*)GetTracker("pose_lefthand"); }
+	inline CVRController*           GetRightHand()  { return (CVRController*)GetTracker("pose_righthand"); }
 
-	void	ForceUnzoom( void );
+	virtual CBaseEntity*            FindUseEntity();
 
-	void ComputeWorldSpaceSurroundingBox( Vector *pVecWorldMins, Vector *pVecWorldMaxs );
+	// ------------------------------------------------------------------------------------------------
+	// Other
+	// ------------------------------------------------------------------------------------------------
 
-	bool m_bJumping;
+#ifdef GAME_DLL
+	CBoneFollowerManager	m_BoneFollowerManager;
+#endif
 
-	float m_flLastViewAnimationTime;
+	CUtlVector< CVRTracker* > m_VRTrackers;
+	bool m_bInVR;
 
-	//Tony; player speeds; at spawn server and client update both of these based on class (if any)
-	float m_flRunSpeed;
-	float m_flSprintSpeed;
-	float m_flProneSpeed;
+	QAngle m_vrViewAngles;
 
-	OuterClass *m_pOuter;
-};			   
-
-
+friend class CVRGameMovement;
+};
 
 
-#endif //SDK_PLAYER_SHARED_H
+
+
+#endif

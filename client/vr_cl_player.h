@@ -7,13 +7,15 @@
 #include "c_baseplayer.h"
 // #include "c_hl2_playerlocaldata.h"
 // #include "vr_game_movement.h"
+#include "vr_player_shared.h"
+#include "vr_tracker.h"
 #include "vr.h"
 
 // TODO: make this a template class
-class C_VRBasePlayer : public C_BasePlayer
+class C_VRBasePlayer : public CVRBasePlayerShared
 {
 public:
-	DECLARE_CLASS( C_VRBasePlayer, C_BasePlayer );
+	DECLARE_CLASS( C_VRBasePlayer, CVRBasePlayerShared );
 	DECLARE_CLIENTCLASS();
 	DECLARE_PREDICTABLE();
 
@@ -24,11 +26,17 @@ public:
 	// Modified Functions if in VR
 	// ------------------------------------------------------------------------------------------------
 	virtual float                   GetFOV();
+	virtual Vector                  EyePosition();
 	virtual const QAngle&           EyeAngles();
 	virtual const QAngle&           LocalEyeAngles();
+	virtual bool					CreateMove( float flInputSampleTime, CUserCmd *pCmd );
+	virtual void                    ClientThink();
 
-	virtual void					PreThink( void );
-	virtual void					PostThink( void );
+	// ------------------------------------------------------------------------------------------------
+	// Playermodel controlling
+	// ------------------------------------------------------------------------------------------------
+	virtual void                    BuildTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed );
+	virtual void                    BuildFirstPersonMeathookTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed, const char *pchHeadBoneName );
 
 	// ------------------------------------------------------------------------------------------------
 	// New VR Only Functions
@@ -36,25 +44,33 @@ public:
 	virtual void                    SetViewRotateOffset( float offset );
 	virtual void                    AddViewRotateOffset( float offset );
 	virtual void                    CorrectViewRotateOffset();
+	virtual const QAngle&           EyeAnglesNoOffset();
+	/*virtual void                    HandleVRMoveData();
+
+	C_VRTracker*                    CreateTracker(CmdVRTracker& cmdTracker);
+	C_VRTracker*                    GetTracker(const char* name);
+
+	inline C_VRTracker*             GetHeadset()    { return GetTracker("hmd"); }
+	inline C_VRTracker*             GetLeftHand()   { return GetTracker("pose_lefthand"); }
+	inline C_VRTracker*             GetRightHand()  { return GetTracker("pose_righthand"); }*/
 
 	// ------------------------------------------------------------------------------------------------
 	// Other
 	// ------------------------------------------------------------------------------------------------
-
-	virtual void                    RegisterUserMessages();
 	virtual void                    OnDataChanged( DataUpdateType_t updateType );
 	virtual void                    ExitLadder();
 
 	// Input handling
-	virtual bool                    CreateMove( float flInputSampleTime, CUserCmd *pCmd );
-	virtual void                    PerformClientSideObstacleAvoidance( float flFrameTime, CUserCmd *pCmd );
+	// virtual void                    PerformClientSideObstacleAvoidance( float flFrameTime, CUserCmd *pCmd );
 
 	virtual bool                    TestMove( const Vector &pos, float fVertDist, float radius, const Vector &objPos, const Vector &objDir );
 
 	// NOTE: you might need this in Alien Swarm or newer, otherwise the player is stuck at the origin point
 	virtual bool                    ShouldRegenerateOriginFromCellBits() const { return true; }
 
+	// CUtlVector< C_VRTracker* > m_VRTrackers;
 
+	float lastViewHeight;
 	float viewOffset;
 
 friend class CVRGameMovement;

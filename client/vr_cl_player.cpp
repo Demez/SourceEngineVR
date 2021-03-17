@@ -1,11 +1,13 @@
 #include "cbase.h"
 #include "vr_cl_player.h"
+#include "vr_input.h"
 
 #include "playerandobjectenumerator.h"
 #include "engine/ivdebugoverlay.h"
 #include "c_ai_basenpc.h"
 #include "in_buttons.h"
 #include "collisionutils.h"
+#include "igamemovement.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -15,6 +17,7 @@
 extern ConVar cl_forwardspeed;
 extern ConVar cl_backspeed;
 extern ConVar cl_sidespeed;
+extern ConVar vr_scale;
 
 ConVar vr_fov_override( "vr_fov_override", "0", FCVAR_CLIENTDLL );
 ConVar vr_disable_eye_ang( "vr_disable_eye_ang", "0", FCVAR_CLIENTDLL );
@@ -24,12 +27,16 @@ ConVar vr_disable_eye_ang( "vr_disable_eye_ang", "0", FCVAR_CLIENTDLL );
 #endif
 
 IMPLEMENT_CLIENTCLASS_DT( C_VRBasePlayer, DT_VRBasePlayer, CVRBasePlayer )
-	// RecvPropDataTable( RECVINFO_DT(m_HL2Local),0, &REFERENCE_RECV_TABLE(DT_HL2Local) ),
 END_RECV_TABLE()
 
 BEGIN_PREDICTION_DATA( C_VRBasePlayer )
-	// DEFINE_PRED_TYPEDESCRIPTION( m_HL2Local, C_HL2PlayerLocalData ),
 END_PREDICTION_DATA()
+
+extern CMoveData* g_pMoveData;
+
+// iojsadiu9fj
+ConVar cl_meathook_neck_pivot_ingame_up( "cl_meathook_neck_pivot_ingame_up", "7.0" );
+ConVar cl_meathook_neck_pivot_ingame_fwd( "cl_meathook_neck_pivot_ingame_fwd", "3.0" );
 
 
 //-----------------------------------------------------------------------------
@@ -65,12 +72,13 @@ void C_VRBasePlayer::OnDataChanged( DataUpdateType_t updateType )
 
 // ------------------------------------------------------------------------------------------------
 // Modified Functions if in VR
+// TODO: most of these functions use g_VR, and we can't use that for multiplayer
 // ------------------------------------------------------------------------------------------------
 float C_VRBasePlayer::GetFOV()
 {
 	if ( g_VR.active )
 	{
-		if ( !vr_fov_override.GetInt() > 0 )
+		if ( vr_fov_override.GetInt() <= 0 )
 		{
 			VRViewParams viewParams = g_VR.GetViewParams();
 			return viewParams.horizontalFOVLeft;
@@ -87,18 +95,49 @@ float C_VRBasePlayer::GetFOV()
 }
 
 
+// this is stupid
+Vector C_VRBasePlayer::EyePosition()
+{
+	if ( g_VR.active && !vr_disable_eye_ang.GetBool() )
+	{
+		VRHostTracker* headset = g_VR.GetTrackerByName("hmd");
+		if ( headset == NULL )
+			return BaseClass::EyePosition();
+
+		Vector basePos = GetAbsOrigin();
+		basePos.z += headset->pos.z;
+		return basePos;
+	}
+	else
+	{
+		return BaseClass::EyePosition();
+	}
+}
+
+
+const QAngle &C_VRBasePlayer::EyeAnglesNoOffset()
+{
+	if ( g_VR.active && !vr_disable_eye_ang.GetBool() )
+	{
+		VRHostTracker* headset = g_VR.GetTrackerByName("hmd");
+		if ( headset == NULL )
+			return BaseClass::EyeAngles();
+
+		return headset->ang;
+	}
+	else
+	{
+		return BaseClass::EyeAngles();
+	}
+}
+
+
 const QAngle &C_VRBasePlayer::EyeAngles()
 {
 	// get the headset view angles, fix if needed, and return
 	if ( g_VR.active && !vr_disable_eye_ang.GetBool() )
 	{
-		VRTracker* headset = g_VR.GetTrackerByName("hmd");
-		if ( headset == NULL )
-			return BaseClass::EyeAngles();
-
-		QAngle eyeAngles( headset->ang );
-		eyeAngles.y += viewOffset;
-		return eyeAngles;
+		return m_vrViewAngles;
 	}
 	else
 	{
@@ -112,13 +151,14 @@ const QAngle &C_VRBasePlayer::LocalEyeAngles()
 	// get the headset view angles, fix if needed, and return
 	if ( g_VR.active && !vr_disable_eye_ang.GetBool() )
 	{
-		VRTracker* headset = g_VR.GetTrackerByName("hmd");
+		VRHostTracker* headset = g_VR.GetTrackerByName("hmd");
 		if ( headset == NULL )
 			return BaseClass::LocalEyeAngles();
 
-		QAngle eyeAngles( headset->ang );
-		eyeAngles.y += viewOffset;
-		return eyeAngles;
+		// QAngle eyeAngles( headset->ang );
+		// eyeAngles.y += viewOffset;
+		// return eyeAngles;
+		return headset->ang;
 	}
 	else
 	{
@@ -127,30 +167,36 @@ const QAngle &C_VRBasePlayer::LocalEyeAngles()
 }
 
 
-
-void C_VRBasePlayer::PreThink( void )
+bool C_VRBasePlayer::CreateMove( float flInputSampleTime, CUserCmd *pCmd )
 {
-	BaseClass::PreThink();
-}
+	bool ret = BaseClass::CreateMove( flInputSampleTime, pCmd );
 
-void C_VRBasePlayer::PostThink( void )
-{
-	BaseClass::PostThink();
+	if ( !IsInAVehicle() )
+	{
+		// PerformClientSideObstacleAvoidance( TICK_INTERVAL, pCmd );
+		// PerformClientSideNPCSpeedModifiers( TICK_INTERVAL, pCmd );
+	}
 
-	if ( g_VR.active && IsAlive() )
+	CVRInput* vr_input = (CVRInput*)input;
+	vr_input->VRMove( flInputSampleTime, pCmd );
+
+	/*if ( g_VR.active && ret )
 	{
 		VRTracker* hmd = g_VR.GetTrackerByName("hmd");
+		if ( hmd != NULL )
+		{
+			pCmd->roomScaleMove = hmd->pos * vr_scale.GetFloat();
+		}
+	}*/
 
-
-		Msg("pog\n");
-	}
+	return ret;
 }
 
 
-// ------------------------------------------------------------------------------------------------
-// User Messages
-// ------------------------------------------------------------------------------------------------
-
+void C_VRBasePlayer::ClientThink()
+{
+	HandleVRMoveData();
+}
 
 
 // ------------------------------------------------------------------------------------------------
@@ -176,7 +222,227 @@ void C_VRBasePlayer::CorrectViewRotateOffset()
 		viewOffset -= 360.0;
 	else if ( viewOffset < -360.0 )
 		viewOffset += 360.0;
+
+	if ( g_VR.active )
+	{
+		VRHostTracker* headset = g_VR.GetTrackerByName("hmd");
+		if ( headset == NULL )
+			return;
+
+		m_vrViewAngles = headset->ang;
+		m_vrViewAngles.y += viewOffset;
+	}
+	else
+	{
+		m_vrViewAngles = BaseClass::EyeAngles();
+	}
 }
+
+
+/*void C_VRBasePlayer::HandleVRMoveData()
+{
+	BaseClass::HandleVRMoveData();
+
+	m_bInVR = g_pMoveData->vr_active;
+
+	// TODO: delete the trackers
+	if ( !m_bInVR )
+		return;
+
+	for (int i = 0; i < g_pMoveData->vr_trackers.Count(); i++)
+	{
+		CmdVRTracker cmdTracker = g_pMoveData->vr_trackers[i];
+		C_VRTracker* tracker = GetTracker(cmdTracker.name);
+		if ( tracker )
+		{
+			tracker->UpdateTracker(cmdTracker);
+		}
+		else
+		{
+			CreateTracker(cmdTracker);
+		}
+
+		if ( V_strcmp(tracker->m_trackerName, "pose_lefthand") == 0 )
+		{
+			m_BoneFollowerManager.AddBoneFollower( tracker, "ValveBiped.Bip01_L_Hand" );
+		}
+		
+		else if ( V_strcmp(tracker->m_trackerName, "pose_righthand") == 0 )
+		{
+			m_BoneFollowerManager.AddBoneFollower( tracker, "ValveBiped.Bip01_R_Hand" );
+		}
+	}
+}
+
+
+C_VRTracker* C_VRBasePlayer::GetTracker( const char* name )
+{
+	if ( !m_bInVR )
+		return NULL;
+
+	for (int i = 0; i < m_VRTrackers.Count(); i++)
+	{
+		C_VRTracker* tracker = m_VRTrackers[i];
+		if ( V_strcmp(tracker->m_trackerName, name) == 0 )
+			return tracker;
+	}
+
+	return NULL;
+}
+
+
+C_VRTracker* C_VRBasePlayer::CreateTracker( CmdVRTracker& cmdTracker )
+{
+	if ( !m_bInVR )
+		return NULL;
+
+	C_VRTracker* tracker;
+	if ( V_strcmp(cmdTracker.name, "pose_lefthand") == 0 || V_strcmp(cmdTracker.name, "pose_righthand") == 0 )
+	{
+		tracker = (C_VRTracker*)CreateEntityByName("vr_controller");
+	}
+	else
+	{
+		tracker = (C_VRTracker*)CreateEntityByName("vr_tracker");
+	}
+
+	tracker->InitializeAsClientEntity("", false);
+	tracker->UpdateTracker(cmdTracker);
+
+	m_VRTrackers.AddToTail(tracker);
+}*/
+
+
+// ------------------------------------------------------------------------------------------------
+// Playermodel controlling
+// ------------------------------------------------------------------------------------------------
+void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed )
+{
+	BaseClass::BuildTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed );
+	BuildFirstPersonMeathookTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, "ValveBiped.Bip01_Head1" );
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: In meathook mode, fix the bone transforms to hang the user's own
+//			avatar under the camera.
+//-----------------------------------------------------------------------------
+void C_VRBasePlayer::BuildFirstPersonMeathookTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed, const char *pchHeadBoneName )
+{
+#if ENGINE_CSGO || ENGINE_2013 || ENGINE_TF2
+	// Handle meathook mode. If we aren't rendering, just use last frame's transforms
+	// if ( !InFirstPersonView() )
+	// 	return;
+
+	// If we're in third-person view, don't do anything special.
+	// If we're in first-person view rendering the main view and using the viewmodel, we shouldn't have even got here!
+	// If we're in first-person view rendering the main view(s), meathook and headless.
+	// If we're in first-person view rendering shadowbuffers/reflections, don't do anything special either (we could do meathook but with a head?)
+	// if ( IsAboutToRagdoll() )
+	// {
+		// We're re-animating specifically to set up the ragdoll.
+		// Meathook can push the player through the floor, which makes the ragdoll fall through the world, which is no good.
+		// So do nothing.
+		// 	return;
+		// }
+
+	// if ( !DrawingMainView() )
+	// {
+	// 	return;
+	// }
+
+	// If we aren't drawing the player anyway, don't mess with the bones. This can happen in Portal.
+	// if( !ShouldDrawThisPlayer() )
+	// {
+	// 	return;
+	// }
+
+	m_BoneAccessor.SetWritableBones( BONE_USED_BY_ANYTHING );
+
+	int iHead = LookupBone( pchHeadBoneName );
+	if ( iHead == -1 )
+	{
+		return;
+	}
+
+	matrix3x4_t &mHeadTransform = GetBoneForWrite( iHead );
+
+	// "up" on the head bone is along the negative Y axis - not sure why.
+	//Vector vHeadTransformUp ( -mHeadTransform[0][1], -mHeadTransform[1][1], -mHeadTransform[2][1] );
+	//Vector vHeadTransformFwd ( mHeadTransform[0][1], mHeadTransform[1][1], mHeadTransform[2][1] );
+	Vector vHeadTransformTranslation ( mHeadTransform[0][3], mHeadTransform[1][3], mHeadTransform[2][3] );
+
+
+	// Find out where the player's head (driven by the HMD) is in the world.
+	// We can't move this with animations or effects without causing nausea, so we need to move
+	// the whole body so that the animated head is in the right place to match the player-controlled head.
+	Vector vHeadUp;
+	Vector vRealPivotPoint;
+	if( m_bInVR )
+	{
+		VMatrix mWorldFromMideye;
+		mWorldFromMideye.SetupMatrixOrgAngles( EyePosition(), EyeAngles() );
+
+		// What we do here is:
+		// * Take the required eye pos+orn - the actual pose the player is controlling with the HMD.
+		// * Go downwards in that space by cl_meathook_neck_pivot_ingame_* - this is now the neck-pivot in the game world of where the player is actually looking.
+		// * Now place the body of the animated character so that the head bone is at that position.
+		// The head bone is the neck pivot point of the in-game character.
+
+		Vector vRealMidEyePos = mWorldFromMideye.GetTranslation();
+		vRealPivotPoint = vRealMidEyePos - ( mWorldFromMideye.GetUp() * cl_meathook_neck_pivot_ingame_up.GetFloat() ) - ( mWorldFromMideye.GetForward() * cl_meathook_neck_pivot_ingame_fwd.GetFloat() );
+	}
+	else
+	{
+		// figure out where to put the body from the aim angles
+		Vector vForward, vRight, vUp;
+		AngleVectors( GetAbsAngles(), &vForward, &vRight, &vUp );
+
+		vRealPivotPoint = GetAbsOrigin() - ( vUp * cl_meathook_neck_pivot_ingame_up.GetFloat() ) - ( vForward * cl_meathook_neck_pivot_ingame_fwd.GetFloat() );		
+	}
+
+	Vector vDeltaToAdd = vRealPivotPoint - vHeadTransformTranslation;
+
+
+	// Now add this offset to the entire skeleton.
+	for (int i = 0; i < hdr->numbones(); i++)
+	{
+		// Only update bones reference by the bone mask.
+		if ( !( hdr->boneFlags( i ) & boneMask ) )
+		{
+			continue;
+		}
+		matrix3x4_t& bone = GetBoneForWrite( i );
+		Vector vBonePos;
+		MatrixGetTranslation ( bone, vBonePos );
+		vBonePos += vDeltaToAdd;
+		MatrixSetTranslation ( vBonePos, bone );
+	}
+
+	// Then scale the head to zero, but leave its position - forms a "neck stub".
+	// This prevents us rendering junk all over the screen, e.g. inside of mouth, etc.
+	MatrixScaleByZero( mHeadTransform );
+
+	// TODO: right now we nuke the hats by shrinking them to nothing,
+	// but it feels like we should do something more sensible.
+	// For example, for one sniper taunt he takes his hat off and waves it - would be nice to see it then.
+	int iHelm = LookupBone( "prp_helmet" );
+	if ( iHelm != -1 )
+	{
+		// Scale the helmet.
+		matrix3x4_t  &transformhelmet = GetBoneForWrite( iHelm );
+		MatrixScaleByZero( transformhelmet );
+	}
+
+	iHelm = LookupBone( "prp_hat" );
+	if ( iHelm != -1 )
+	{
+		matrix3x4_t  &transformhelmet = GetBoneForWrite( iHelm );
+		MatrixScaleByZero( transformhelmet );
+	}
+#endif
+}
+
 
 // ------------------------------------------------------------------------------------------------
 // Untouched Functions
@@ -273,312 +539,7 @@ bool C_VRBasePlayer::TestMove( const Vector &pos, float fVertDist, float radius,
 	return true;
 }
 
-//-----------------------------------------------------------------------------
-// Client-side obstacle avoidance
-//-----------------------------------------------------------------------------
-void C_VRBasePlayer::PerformClientSideObstacleAvoidance( float flFrameTime, CUserCmd *pCmd )
-{
-	// Don't avoid if noclipping or in movetype none
-	switch ( GetMoveType() )
-	{
-	case MOVETYPE_NOCLIP:
-	case MOVETYPE_NONE:
-	case MOVETYPE_OBSERVER:
-		return;
-	default:
-		break;
-	}
 
-	// Try to steer away from any objects/players we might interpenetrate
-	Vector size = WorldAlignSize();
-
-	float radius = 0.7f * sqrt( size.x * size.x + size.y * size.y );
-	float curspeed = GetLocalVelocity().Length2D();
-
-	//int slot = 1;
-	//engine->Con_NPrintf( slot++, "speed %f\n", curspeed );
-	//engine->Con_NPrintf( slot++, "radius %f\n", radius );
-
-	// If running, use a larger radius
-	float factor = 1.0f;
-
-	if ( curspeed > 150.0f )
-	{
-		curspeed = MIN( 2048.0f, curspeed );
-		factor = ( 1.0f + ( curspeed - 150.0f ) / 150.0f );
-
-		//engine->Con_NPrintf( slot++, "scaleup (%f) to radius %f\n", factor, radius * factor );
-
-		radius = radius * factor;
-	}
-
-	Vector currentdir;
-	Vector rightdir;
-
-	QAngle vAngles = pCmd->viewangles;
-	vAngles.x = 0;
-
-	AngleVectors( vAngles, &currentdir, &rightdir, NULL );
-		
-	bool istryingtomove = false;
-	bool ismovingforward = false;
-	if ( fabs( pCmd->forwardmove ) > 0.0f || 
-		fabs( pCmd->sidemove ) > 0.0f )
-	{
-		istryingtomove = true;
-		if ( pCmd->forwardmove > 1.0f )
-		{
-			ismovingforward = true;
-		}
-	}
-
-	if ( istryingtomove == true )
-		 radius *= 1.3f;
-
-	CPlayerAndObjectEnumerator avoid( radius );
-	partition->EnumerateElementsInSphere( PARTITION_CLIENT_SOLID_EDICTS, GetAbsOrigin(), radius, false, &avoid );
-
-	// Okay, decide how to avoid if there's anything close by
-	int c = avoid.GetObjectCount();
-	if ( c <= 0 )
-		return;
-
-	//engine->Con_NPrintf( slot++, "moving %s forward %s\n", istryingtomove ? "true" : "false", ismovingforward ? "true" : "false"  );
-
-	float adjustforwardmove = 0.0f;
-	float adjustsidemove	= 0.0f;
-
-	for ( int i = 0; i < c; i++ )
-	{
-		C_AI_BaseNPC *obj = dynamic_cast< C_AI_BaseNPC *>(avoid.GetObject( i ));
-
-		if( !obj )
-			continue;
-
-		Vector vecToObject = obj->GetAbsOrigin() - GetAbsOrigin();
-
-		float flDist = vecToObject.Length2D();
-		
-		// Figure out a 2D radius for the object
-		Vector vecWorldMins, vecWorldMaxs;
-		obj->CollisionProp()->WorldSpaceAABB( &vecWorldMins, &vecWorldMaxs );
-		Vector objSize = vecWorldMaxs - vecWorldMins;
-
-		float objectradius = 0.5f * sqrt( objSize.x * objSize.x + objSize.y * objSize.y );
-
-		//Don't run this code if the NPC is not moving UNLESS we are in stuck inside of them.
-		if ( !obj->IsMoving() && flDist > objectradius )
-			  continue;
-
-		if ( flDist > objectradius && obj->IsEffectActive( EF_NODRAW ) )
-		{
-			obj->RemoveEffects( EF_NODRAW );
-		}
-
-		Vector vecNPCVelocity;
-		obj->EstimateAbsVelocity( vecNPCVelocity );
-		float flNPCSpeed = VectorNormalize( vecNPCVelocity );
-
-		Vector vPlayerVel = GetAbsVelocity();
-		VectorNormalize( vPlayerVel );
-
-		float flHit1, flHit2;
-		Vector vRayDir = vecToObject;
-		VectorNormalize( vRayDir );
-
-		float flVelProduct = DotProduct( vecNPCVelocity, vPlayerVel );
-		float flDirProduct = DotProduct( vRayDir, vPlayerVel );
-
-		if ( !IntersectInfiniteRayWithSphere(
-				GetAbsOrigin(),
-				vRayDir,
-				obj->GetAbsOrigin(),
-				radius,
-				&flHit1,
-				&flHit2 ) )
-			continue;
-
-        Vector dirToObject = -vecToObject;
-		VectorNormalize( dirToObject );
-
-		float fwd = 0;
-		float rt = 0;
-
-		float sidescale = 2.0f;
-		float forwardscale = 1.0f;
-		bool foundResult = false;
-
-		Vector vMoveDir = vecNPCVelocity;
-		if ( flNPCSpeed > 0.001f )
-		{
-			// This NPC is moving. First try deflecting the player left or right relative to the NPC's velocity.
-			// Start with whatever side they're on relative to the NPC's velocity.
-			Vector vecNPCTrajectoryRight = CrossProduct( vecNPCVelocity, Vector( 0, 0, 1) );
-			int iDirection = ( vecNPCTrajectoryRight.Dot( dirToObject ) > 0 ) ? 1 : -1;
-			for ( int nTries = 0; nTries < 2; nTries++ )
-			{
-				Vector vecTryMove = vecNPCTrajectoryRight * iDirection;
-				VectorNormalize( vecTryMove );
-				
-				Vector vTestPosition = GetAbsOrigin() + vecTryMove * radius * 2;
-
-				if ( TestMove( vTestPosition, size.z * 2, radius * 2, obj->GetAbsOrigin(), vMoveDir ) )
-				{
-					fwd = currentdir.Dot( vecTryMove );
-					rt = rightdir.Dot( vecTryMove );
-					
-					//Msg( "PUSH DEFLECT fwd=%f, rt=%f\n", fwd, rt );
-					
-					foundResult = true;
-					break;
-				}
-				else
-				{
-					// Try the other direction.
-					iDirection *= -1;
-				}
-			}
-		}
-		else
-		{
-			// the object isn't moving, so try moving opposite the way it's facing
-			Vector vecNPCForward;
-			obj->GetVectors( &vecNPCForward, NULL, NULL );
-			
-			Vector vTestPosition = GetAbsOrigin() - vecNPCForward * radius * 2;
-			if ( TestMove( vTestPosition, size.z * 2, radius * 2, obj->GetAbsOrigin(), vMoveDir ) )
-			{
-				fwd = currentdir.Dot( -vecNPCForward );
-				rt = rightdir.Dot( -vecNPCForward );
-
-				if ( flDist < objectradius )
-				{
-					obj->AddEffects( EF_NODRAW );
-				}
-
-				//Msg( "PUSH AWAY FACE fwd=%f, rt=%f\n", fwd, rt );
-
-				foundResult = true;
-			}
-		}
-
-		if ( !foundResult )
-		{
-			// test if we can move in the direction the object is moving
-			Vector vTestPosition = GetAbsOrigin() + vMoveDir * radius * 2;
-			if ( TestMove( vTestPosition, size.z * 2, radius * 2, obj->GetAbsOrigin(), vMoveDir ) )
-			{
-				fwd = currentdir.Dot( vMoveDir );
-				rt = rightdir.Dot( vMoveDir );
-
-				if ( flDist < objectradius )
-				{
-					obj->AddEffects( EF_NODRAW );
-				}
-
-				//Msg( "PUSH ALONG fwd=%f, rt=%f\n", fwd, rt );
-
-				foundResult = true;
-			}
-			else
-			{
-				// try moving directly away from the object
-				Vector vTestPosition = GetAbsOrigin() - dirToObject * radius * 2;
-				if ( TestMove( vTestPosition, size.z * 2, radius * 2, obj->GetAbsOrigin(), vMoveDir ) )
-				{
-					fwd = currentdir.Dot( -dirToObject );
-					rt = rightdir.Dot( -dirToObject );
-					foundResult = true;
-
-					//Msg( "PUSH AWAY fwd=%f, rt=%f\n", fwd, rt );
-				}
-			}
-		}
-
-		if ( !foundResult )
-		{
-			// test if we can move through the object
-			Vector vTestPosition = GetAbsOrigin() - vMoveDir * radius * 2;
-			fwd = currentdir.Dot( -vMoveDir );
-			rt = rightdir.Dot( -vMoveDir );
-
-			if ( flDist < objectradius )
-			{
-				obj->AddEffects( EF_NODRAW );
-			}
-
-			//Msg( "PUSH THROUGH fwd=%f, rt=%f\n", fwd, rt );
-
-			foundResult = true;
-		}
-
-		// If running, then do a lot more sideways veer since we're not going to do anything to
-		//  forward velocity
-		if ( istryingtomove )
-		{
-			sidescale = 6.0f;
-		}
-
-		if ( flVelProduct > 0.0f && flDirProduct > 0.0f )
-		{
-			sidescale = 0.1f;
-		}
-
-		float force = 1.0f;
-		float forward = forwardscale * fwd * force * AVOID_SPEED;
-		float side = sidescale * rt * force * AVOID_SPEED;
-
-		adjustforwardmove	+= forward;
-		adjustsidemove		+= side;
-	}
-
-	pCmd->forwardmove	+= adjustforwardmove;
-	pCmd->sidemove		+= adjustsidemove;
-	
-	// Clamp the move to within legal limits, preserving direction. This is a little
-	// complicated because we have different limits for forward, back, and side
-
-	//Msg( "PRECLAMP: forwardmove=%f, sidemove=%f\n", pCmd->forwardmove, pCmd->sidemove );
-
-	float flForwardScale = 1.0f;
-	if ( pCmd->forwardmove > fabs( cl_forwardspeed.GetFloat() ) )
-	{
-		flForwardScale = fabs( cl_forwardspeed.GetFloat() ) / pCmd->forwardmove;
-	}
-	else if ( pCmd->forwardmove < -fabs( cl_backspeed.GetFloat() ) )
-	{
-		flForwardScale = fabs( cl_backspeed.GetFloat() ) / fabs( pCmd->forwardmove );
-	}
-	
-	float flSideScale = 1.0f;
-	if ( fabs( pCmd->sidemove ) > fabs( cl_sidespeed.GetFloat() ) )
-	{
-		flSideScale = fabs( cl_sidespeed.GetFloat() ) / fabs( pCmd->sidemove );
-	}
-	
-	float flScale = MIN( flForwardScale, flSideScale );
-	pCmd->forwardmove *= flScale;
-	pCmd->sidemove *= flScale;
-
-	//Msg( "POSTCLAMP: forwardmove=%f, sidemove=%f\n", pCmd->forwardmove, pCmd->sidemove );
-}
-
-
-//-----------------------------------------------------------------------------
-// Purpose: Input handling
-//-----------------------------------------------------------------------------
-bool C_VRBasePlayer::CreateMove( float flInputSampleTime, CUserCmd *pCmd )
-{
-	bool bResult = BaseClass::CreateMove( flInputSampleTime, pCmd );
-
-	if ( !IsInAVehicle() )
-	{
-		PerformClientSideObstacleAvoidance( TICK_INTERVAL, pCmd );
-		// PerformClientSideNPCSpeedModifiers( TICK_INTERVAL, pCmd );
-	}
-
-	return bResult;
-}
 
 
 

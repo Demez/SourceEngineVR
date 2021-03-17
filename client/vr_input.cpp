@@ -8,6 +8,7 @@
 #include "cdll_util.h"
 #include "iclientvehicle.h"
 #include "inputsystem/iinputsystem.h"
+#include "in_buttons.h"
 
 #include "vr_cl_player.h"
 #include "vr.h"
@@ -18,6 +19,7 @@
 
 
 ConVar vr_allow_mouse("vr_allow_mouse", "0", FCVAR_CLIENTDLL);
+ConVar vr_allow_keyboard("vr_allow_keyboard", "1", FCVAR_CLIENTDLL);
 ConVar vr_disable_joy("vr_disable_joy", "0", FCVAR_CLIENTDLL);
 // ConVar vr_move_mode("vr_move_mode", "0", FCVAR_CLIENTDLL, "0 for normal/non-vr, 1 - Headset for movement direction, 2 or 3 for L/R controller move direction");
 
@@ -27,7 +29,7 @@ ConVar vr_back_speed("vr_back_speed", "450", FCVAR_CLIENTDLL);
 ConVar vr_turn_speed("vr_turn_speed", "1.5", FCVAR_CLIENTDLL);
 // ConVar vr_turn_snap("vr_turn_snap", "0", FCVAR_CLIENTDLL);
 
-extern ConVar vr_scale;
+extern ConVar vr_scale_old;
 
 /*
 ConVar cl_sidespeed( "cl_sidespeed", "450", FCVAR_CHEAT );
@@ -36,9 +38,10 @@ ConVar cl_forwardspeed( "cl_forwardspeed", "450", FCVAR_CHEAT );
 ConVar cl_backspeed( "cl_backspeed", "450", FCVAR_CHEAT );
 */
 
-extern ConVar joy_response_move;
+// extern ConVar joy_response_move;
 extern ConVar joy_response_move_vehicle;
 extern ConVar joy_response_look;
+static ConVar joy_response_move( "joy_response_move", "1", FCVAR_ARCHIVE, "'Movement' stick response mode: 0=Linear, 1=quadratic, 2=cubic, 3=quadratic extreme, 4=power function(i.e., pow(x,1/sensitivity)), 5=two-stage" );
 
 static ConVar joy_forwardthreshold( "joy_forwardthreshold", "0.15", FCVAR_ARCHIVE );
 static ConVar joy_sidethreshold( "joy_sidethreshold", "0.15", FCVAR_ARCHIVE );
@@ -46,8 +49,165 @@ static ConVar joy_pitchthreshold( "joy_pitchthreshold", "0.15", FCVAR_ARCHIVE );
 static ConVar joy_yawthreshold( "joy_yawthreshold", "0.15", FCVAR_ARCHIVE );
 static ConVar joy_forwardsensitivity( "joy_forwardsensitivity", "-1", FCVAR_ARCHIVE );
 static ConVar joy_sidesensitivity( "joy_sidesensitivity", "1", FCVAR_ARCHIVE );
-static ConVar joy_pitchsensitivity( "joy_pitchsensitivity", "1", FCVAR_ARCHIVE | FCVAR_ARCHIVE_XBOX );
-static ConVar joy_yawsensitivity( "joy_yawsensitivity", "-1", FCVAR_ARCHIVE | FCVAR_ARCHIVE_XBOX );
+static ConVar joy_pitchsensitivity( "joy_pitchsensitivity", "1", FCVAR_ARCHIVE );
+static ConVar joy_yawsensitivity( "joy_yawsensitivity", "-1", FCVAR_ARCHIVE );
+
+static float ResponseCurve( int curve, float x, int axis, float sensitivity )
+{
+	switch ( curve )
+	{
+	case 1:
+		// quadratic
+		if ( x < 0 )
+			return -(x*x) * sensitivity;
+		return x*x * sensitivity;
+
+	case 2:
+		// cubic
+		return x*x*x*sensitivity;
+
+	case 3:
+	{
+		// quadratic extreme
+		float extreme = 1.0f;
+		if ( fabs( x ) >= 0.95f )
+		{
+			extreme = 1.5f;
+		}
+		if ( x < 0 )
+			return -extreme * x*x*sensitivity;
+		return extreme * x*x*sensitivity;
+	}
+	case 4:
+	{
+		float flScale = sensitivity < 0.0f ? -1.0f : 1.0f;
+
+		sensitivity = clamp( fabs( sensitivity ), 1.0e-8f, 1000.0f );
+
+		float oneOverSens = 1.0f / sensitivity;
+
+		if ( x < 0.0f )
+		{
+			flScale = -flScale;
+		}
+
+		float retval = clamp( powf( fabs( x ), oneOverSens ), 0.0f, 1.0f );
+		return retval * flScale;
+	}
+	break;
+	case 5:
+	{
+		float out = x;
+
+		if( fabs(out) <= 0.6f )
+		{
+			out *= 0.5f;
+		}
+
+		out = out * sensitivity;
+		return out;
+	}
+	break;
+	/*case 6: // Custom for driving a vehicle!
+	{
+		if( axis == YAW )
+		{
+			// This code only wants to affect YAW axis (the left and right axis), which 
+			// is used for turning in the car. We fall-through and use a linear curve on 
+			// the PITCH axis, which is the vehicle's throttle. REALLY, these are the 'forward'
+			// and 'side' axes, but we don't have constants for those, so we re-use the same
+			// axis convention as the look stick. (sjb)
+			float sign = 1;
+
+			if( x  < 0.0 )
+				sign = -1;
+
+			x = fabs(x);
+
+			if( x <= joy_vehicle_turn_lowend.GetFloat() )
+				x = RemapVal( x, 0.0f, joy_vehicle_turn_lowend.GetFloat(), 0.0f, joy_vehicle_turn_lowmap.GetFloat() );
+			else
+				x = RemapVal( x, joy_vehicle_turn_lowend.GetFloat(), 1.0f, joy_vehicle_turn_lowmap.GetFloat(), 1.0f );
+
+			return x * sensitivity * sign;
+		}
+		//else
+		//	fall through and just return x*sensitivity below (as if using default curve)
+	}
+	//The idea is to create a max large walk zone surrounded by a max run zone.
+	case 7:
+	{
+		float xAbs = fabs(x);
+		if(xAbs < joy_sensitive_step0.GetFloat())
+		{
+			return 0;
+		}
+		else if (xAbs < joy_sensitive_step2.GetFloat())
+		{
+			return (85.0f/cl_forwardspeed.GetFloat()) * ((x < 0)? -1.0f : 1.0f);
+		}
+		else
+		{
+			return ((x < 0)? -1.0f : 1.0f);
+		}
+	}
+	break;
+	case 8: //same concept as above but with smooth speeds
+	{
+		float xAbs = fabs(x);
+		if(xAbs < joy_sensitive_step0.GetFloat())
+		{
+			return 0;
+		}
+		else if (xAbs < joy_sensitive_step2.GetFloat())
+		{
+			float maxSpeed = (85.0f/cl_forwardspeed.GetFloat());
+			float t = (xAbs-joy_sensitive_step0.GetFloat())
+				/ (joy_sensitive_step2.GetFloat()-joy_sensitive_step0.GetFloat());
+			float speed = t*maxSpeed;
+			return speed * ((x < 0)? -1.0f : 1.0f);
+		}
+		else
+		{
+			float maxSpeed = 1.0f;
+			float minSpeed = (85.0f/cl_forwardspeed.GetFloat());
+			float t = (xAbs-joy_sensitive_step2.GetFloat())
+				/ (1.0f-joy_sensitive_step2.GetFloat());
+			float speed = t*(maxSpeed-minSpeed) + minSpeed;
+			return speed * ((x < 0)? -1.0f : 1.0f);
+		}
+	}
+	break;
+	case 9: //same concept as above but with smooth speeds for walking and a hard speed for running
+	{
+		float xAbs = fabs(x);
+		if(xAbs < joy_sensitive_step0.GetFloat())
+		{
+			return 0;
+		}
+		else if (xAbs < joy_sensitive_step1.GetFloat())
+		{
+			float maxSpeed = (85.0f/cl_forwardspeed.GetFloat());
+			float t = (xAbs-joy_sensitive_step0.GetFloat())
+				/ (joy_sensitive_step1.GetFloat()-joy_sensitive_step0.GetFloat());
+			float speed = t*maxSpeed;
+			return speed * ((x < 0)? -1.0f : 1.0f);
+		}
+		else if (xAbs < joy_sensitive_step2.GetFloat())
+		{
+			return (85.0f/cl_forwardspeed.GetFloat()) * ((x < 0)? -1.0f : 1.0f);
+		}
+		else
+		{
+			return ((x < 0)? -1.0f : 1.0f);
+		}
+	}*/
+	break;
+	}
+
+	// linear
+	return x*sensitivity;
+}
 
 
 // ====================================================================================================
@@ -61,32 +221,27 @@ void CVRInput::JoyStickMove( float frametime, CUserCmd *cmd )
 		return;
 	}
 
-	// what is this?
-	if ( m_flRemainingJoystickSampleTime <= 0 )
-		return;
-	frametime = min(m_flRemainingJoystickSampleTime, frametime);
-	m_flRemainingJoystickSampleTime -= frametime;
+	// maybe i should use this, makes it so this isn't updated as often, valve used it for a reason
+	// if ( m_flRemainingJoystickSampleTime <= 0 )
+	// 	return;
+	// frametime = MIN(m_flRemainingJoystickSampleTime, frametime);
+	// m_flRemainingJoystickSampleTime -= frametime;
 
-	QAngle viewangles;
-	C_VRBasePlayer *pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
-	VRTracker* hmd = g_VR.GetTrackerByName("hmd");
-
-	if ( !vr_disable_eye_ang.GetBool() )
-	{
-		VRVector2Action* turning = (VRVector2Action*)g_VR.GetActionByName( "vector2_smoothturn" );
-		pPlayer->AddViewRotateOffset( -turning->x * vr_turn_speed.GetFloat() );
-		viewangles = pPlayer->EyeAngles();
-	}
-	else
-	{
-		engine->GetViewAngles( viewangles );
-	}
+	float forward = 0;
+	float side = 0;
 
 	VRVector2Action* walkDir = (VRVector2Action*)g_VR.GetActionByName( "vector2_walkdirection" );
+	if ( walkDir != NULL )
+	{
+		forward = walkDir->y * -1;
+		side = walkDir->x;
+	}
 
 	// TODO: if in a vehicle, use the index finger trigger buttons (on the rift controllers)
-	float forward = walkDir->y * -1;
-	float side    = walkDir->x;
+	// maybe different steamvr input profiles? people don't really like changing steamvr input,
+	// but i don't feel like making some custom input system that you can change in-game for this at the moment, maybe in the future
+
+	C_VRBasePlayer *pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
 
 	int iResponseCurve = 0;
 	if ( pPlayer && pPlayer->IsInAVehicle() )
@@ -104,25 +259,10 @@ void CVRInput::JoyStickMove( float frametime, CUserCmd *cmd )
 	val = ResponseCurve( iResponseCurve, side, YAW, joy_sidesensitivity.GetFloat() );
 	float joySideMove = val * vr_side_speed.GetFloat();
 
-	if ( hmd != NULL )
-	{
-		// doesn't work with the view turning
-
-		Vector hmdPos = hmd->pos * vr_scale.GetFloat();
-		pPlayer->SetViewOffset(hmdPos);
-
-		Vector newViewPos = oldViewPos - hmdPos;
-
-		joyForwardMove += joyForwardMove + newViewPos.x;
-		joySideMove += joySideMove + newViewPos.y;
-		oldViewPos = hmdPos;
-	}
-
 	// apply player motion relative to screen space
 	cmd->forwardmove += joyForwardMove;
 	cmd->sidemove += joySideMove;
 
-	CCommand tmp;
 	if ( FloatMakePositive(joyForwardMove) >= joy_autosprint.GetFloat() || FloatMakePositive(joySideMove) >= joy_autosprint.GetFloat() )
 	{
 		KeyDown( &in_joyspeed, NULL );
@@ -132,17 +272,183 @@ void CVRInput::JoyStickMove( float frametime, CUserCmd *cmd )
 		KeyUp( &in_joyspeed, NULL );
 	}
 
-	engine->SetViewAngles( viewangles );
+	QAngle viewAngles = pPlayer->EyeAngles();
+	engine->SetViewAngles( viewAngles );
+}
+
+extern short GetTrackerIndex(const char* name);
+
+void WriteTrackerToCmd( CUserCmd *cmd, VRHostTracker* tracker )
+{
+	if ( tracker == NULL )
+		return;
+
+	short index = GetTrackerIndex(tracker->name);
+
+	for (int i = 0; i < cmd->vr_trackers.Count(); i++)
+	{
+		if (index == cmd->vr_trackers[i].index)
+		{
+			cmd->vr_trackers[i].ang = tracker->ang;
+			cmd->vr_trackers[i].pos = tracker->pos;
+			return;
+		}
+	}
+
+	CmdVRTracker cmdTracker;
+	cmdTracker.ang = tracker->ang;
+	cmdTracker.pos = tracker->pos;
+	cmdTracker.name = tracker->name;
+	cmdTracker.index = GetTrackerIndex(tracker->name);
+	
+	cmd->vr_trackers.AddToTail( cmdTracker );
+}
+
+
+// ====================================================================================================
+// handle all the vr inputs
+// ====================================================================================================
+void CVRInput::VRMove( float frametime, CUserCmd *cmd )
+{
+	if ( !g_VR.active )
+		return;
+
+	cmd->vr_active = 1;
+
+	C_VRBasePlayer *pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
+	VRHostTracker* hmd = g_VR.GetTrackerByName("hmd");
+
+	float viewAngleOffset = 0.0;
+	if ( !vr_disable_eye_ang.GetBool() )
+	{
+		VRVector2Action* turning = (VRVector2Action*)g_VR.GetActionByName( "vector2_smoothturn" );
+		if ( turning != NULL )
+		{
+			viewAngleOffset = -turning->x * vr_turn_speed.GetFloat();
+			pPlayer->AddViewRotateOffset( viewAngleOffset );
+		}
+	}
+
+	if ( hmd != NULL )
+	{
+		// QuakeVR copy paste funny
+		// also has some stuff for eye position and the rotation, hmm
+		Vector moveInTracking = hmd->pos - lastHeadOrigin;
+		// moveInTracking[0] *= -meters_to_units;
+		// moveInTracking[1] *= -meters_to_units;
+		// moveInTracking[2] = 0;
+
+		lastHeadOrigin = hmd->pos;
+
+		Vector finalPos;
+		VectorYawRotate(moveInTracking, pPlayer->viewOffset, finalPos);
+		finalPos.z = 0;
+
+		cmd->vr_hmdOriginOffset = finalPos;
+
+		cmd->vr_hmdOrigin = hmd->pos;
+
+
+		// cmd->forwardmove += cmd->vr_hmdOrigin.x;
+		// cmd->sidemove += cmd->vr_hmdOrigin.y;
+	}
+
+	cmd->vr_viewRotation = pPlayer->viewOffset;
+
+	WriteTrackerToCmd( cmd, g_VR.GetHeadset() );
+	WriteTrackerToCmd( cmd, g_VR.GetLeftController() );
+	WriteTrackerToCmd( cmd, g_VR.GetRightController() );
+
+	/*if ( !vr_disable_eye_ang.GetBool() )
+	{
+		VRVector2Action* turning = (VRVector2Action*)g_VR.GetActionByName( "vector2_smoothturn" );
+		if ( turning != NULL )
+		{
+			pPlayer->AddViewRotateOffset( -turning->x * vr_turn_speed.GetFloat() );
+		}
+		viewangles = pPlayer->EyeAngles();
+	}
+	else
+	{
+		engine->GetViewAngles( viewangles );
+	}*/
+}
+
+
+void CVRInput::CalcButtonBitsBool( const char* action, int in_button )
+{
+	VRBoolAction* bAction = (VRBoolAction*)g_VR.GetActionByName(action);
+	if ( bAction && bAction->value )
+	{
+		m_bits |= in_button;
+	}
+}
+
+
+void CVRInput::CalcButtonBitsToggleCmd( const char* action, bool& bEnabled, const char* cmd )
+{
+	VRBoolAction* bAction = (VRBoolAction*)g_VR.GetActionByName(action);
+	if ( bAction && (bEnabled != bAction->value) )
+	{
+		if ( !bEnabled )
+			engine->ClientCmd(cmd);
+
+		bEnabled = bAction->value;
+	}
+}
+
+
+// TODO: handle driving inputs, would need to check the active action set
+int CVRInput::GetButtonBits( bool bResetState )
+{
+	if ( !g_VR.active )
+		return BaseClass::GetButtonBits( bResetState );
+
+	int bits = 0;
+
+	if ( vr_allow_keyboard.GetBool() )
+		bits = BaseClass::GetButtonBits( bResetState );
+
+	m_bits = bits;
+
+	// VRVector1Action* v1PrimaryFire = (VRVector1Action*)g_VR.GetActionByName("vector1_primaryfire");  // wonder what this could be used for
+
+	CalcButtonBitsBool("boolean_primaryfire", IN_ATTACK);
+	CalcButtonBitsBool("boolean_secondaryfire", IN_ATTACK2);
+	CalcButtonBitsBool("boolean_sprint", IN_SPEED);
+	CalcButtonBitsBool("boolean_jump", IN_JUMP);
+	CalcButtonBitsBool("boolean_reload", IN_RELOAD);
+	CalcButtonBitsBool("boolean_use", IN_USE);
+	CalcButtonBitsBool("boolean_left_pickup", IN_PICKUP_LEFT);
+	CalcButtonBitsBool("boolean_right_pickup", IN_PICKUP_RIGHT);
+
+	// TODO: need to setup something better for changing weapon
+	CalcButtonBitsToggleCmd("boolean_changeweapon", bInNextWeapon, "invnext");
+
+	// Demez TODO: test in the future when the flashlight works in csgo
+	CalcButtonBitsToggleCmd("boolean_flashlight", bFlashlightOn, "impulse 100");
+
+	return m_bits;
 }
 
 
 // ====================================================================================================
 // minor changes
 // ====================================================================================================
-void CVRInput::AccumulateMouse()
+void CVRInput::AccumulateMouse( int nSlot )
 {
 	if ( !g_VR.active || vr_allow_mouse.GetBool() )
-		BaseClass::AccumulateMouse();
+		#if ENGINE_NEW
+			BaseClass::AccumulateMouse( 0 );
+		#else
+			BaseClass::AccumulateMouse();
+		#endif
+}
+
+
+void CVRInput::AccumulateMouse()
+{
+	AccumulateMouse( 0 );
 }
 
 

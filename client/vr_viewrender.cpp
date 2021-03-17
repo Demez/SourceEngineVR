@@ -2,6 +2,7 @@
 #include "vr.h"
 #include "vr_viewrender.h"
 #include "rendertexture.h"
+#include "iclientmode.h"
 #include "materialsystem/imaterialsystem.h"
 #include "materialsystem/imaterialvar.h"
 #include "materialsystem/itexture.h"
@@ -19,7 +20,7 @@ ConVar vr_test("vr_test", "0", FCVAR_CLIENTDLL);
 
 ConVar vr_nearz("vr_nearz", "5", FCVAR_CLIENTDLL);
 ConVar vr_autoupdate_rt("vr_autoupdate_rt", "1", FCVAR_CLIENTDLL);
-ConVar vr_scale("vr_scale", "42.5", FCVAR_CLIENTDLL);
+ConVar vr_scale_old("vr_scale_old", "42.5", FCVAR_CLIENTDLL);  // why is this in viewrender of all places?
 
 
 // issue: nothing can inherit this with this function, kind of a major issue
@@ -55,9 +56,42 @@ CVRViewRender::CVRViewRender()
 }
 
 
+void CVRViewRender::LevelInit()
+{
+	BaseViewRender::LevelInit();
+	InitEyeRenderTargets();
+}
+
+
+void CVRViewRender::LevelShutdown()
+{
+	BaseViewRender::LevelShutdown();
+
+	if ( leftEye != NULL )
+		leftEye->Release();
+
+	if ( rightEye != NULL )
+		rightEye->Release();
+
+	leftEye = NULL;
+	rightEye = NULL;
+}
+
+// not sure if RT_SIZE_LITERAL is even needed tbh
+#if !ENGINE_CSGO && !ENGINE_2013
+#define RT_SIZE_LITERAL RT_SIZE_NO_CHANGE
+#endif
+
+
 void CVRViewRender::InitEyeRenderTargets()
 {
+	if ( !g_VR.active )
+		return;
+
 	// if we are hackily resizing the render targets, free the existing ones
+	// Demez TODO: there is an issue here with this: if we change the eye resolution and make new render textures when already active,
+	// the render targets sent to the headset just lock up and is never updated after the first time it's sent,
+	// not even restarting openvr fixes it, so im not sure what's going on for that to happen yet
 	if ( leftEye != NULL )
 		leftEye->Release();
 
@@ -79,20 +113,38 @@ void CVRViewRender::InitEyeRenderTargets()
 	leftEye = materials->CreateNamedRenderTargetTextureEx2(
 	    "_rt_vr_left",
 		lastWidth, lastHeight,
-		RT_SIZE_NO_CHANGE,
-		IMAGE_FORMAT_RGBA8888,
-		MATERIAL_RT_DEPTH_SEPARATE, // MATERIAL_RT_DEPTH_NONE,
-	    TEXTUREFLAGS_RENDERTARGET | TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP,
+		RT_SIZE_LITERAL, // RT_SIZE_NO_CHANGE,
+		materials->GetBackBufferFormat(),// IMAGE_FORMAT_RGBA8888,
+		MATERIAL_RT_DEPTH_SHARED, // MATERIAL_RT_DEPTH_SEPARATE,
+	    TEXTUREFLAGS_RENDERTARGET /*| TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP*/,
 	    0 );
 
 	rightEye = materials->CreateNamedRenderTargetTextureEx2(
 	    "_rt_vr_right",
 		lastWidth, lastHeight,
-		RT_SIZE_NO_CHANGE,
-		materials->GetBackBufferFormat(),
-		MATERIAL_RT_DEPTH_NONE,
-	    TEXTUREFLAGS_RENDERTARGET | TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP,
+		RT_SIZE_LITERAL, // RT_SIZE_NO_CHANGE,
+		IMAGE_FORMAT_RGBA8888, // materials->GetBackBufferFormat(),
+		MATERIAL_RT_DEPTH_SHARED, // MATERIAL_RT_DEPTH_NONE,
+	    TEXTUREFLAGS_RENDERTARGET /*| TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP*/,
 	    0 );
+
+	/*leftEyeDepth = materials->CreateNamedRenderTargetTextureEx2(
+	    "_rt_vr_left_depth",
+		lastWidth, lastHeight,
+		RT_SIZE_LITERAL,
+		materials->GetBackBufferFormat(),
+		MATERIAL_RT_DEPTH_ONLY,
+	    TEXTUREFLAGS_RENDERTARGET | TEXTUREFLAGS_DEPTHRENDERTARGET | TEXTUREFLAGS_NOMIP,
+	    0 );
+
+	rightEyeDepth = materials->CreateNamedRenderTargetTextureEx2(
+	    "_rt_vr_right_depth",
+		lastWidth, lastHeight,
+		RT_SIZE_LITERAL,
+		IMAGE_FORMAT_RGBA8888,
+		MATERIAL_RT_DEPTH_ONLY,
+	    TEXTUREFLAGS_RENDERTARGET | TEXTUREFLAGS_DEPTHRENDERTARGET | TEXTUREFLAGS_NOMIP,
+	    0 );*/
 
 	/*leftEyeDepthRef.InitRenderTarget(
 		lastWidth, lastHeight,
@@ -123,14 +175,14 @@ void CVRViewRender::InitEyeRenderTargets()
 		TEXTUREFLAGS_DEPTHRENDERTARGET | TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_POINTSAMPLE,
 	    0 );*/
 
-	leftEyeDepthRef.InitRenderTarget( lastWidth, lastHeight, RT_SIZE_DEFAULT, materials->GetBackBufferFormat(), MATERIAL_RT_DEPTH_NONE, true, "_rt_vr_left_depth" );
-	leftEyeDepth = leftEyeDepthRef;
+	/*leftEyeDepthRef.InitRenderTarget( lastWidth, lastHeight, RT_SIZE_DEFAULT, materials->GetBackBufferFormat(), MATERIAL_RT_DEPTH_NONE, true, "_rt_vr_left_depth" );
+	// leftEyeDepth = leftEyeDepthRef;
 
 	rightEyeDepthRef.InitRenderTarget( lastWidth, lastHeight, RT_SIZE_DEFAULT, materials->GetBackBufferFormat(), MATERIAL_RT_DEPTH_NONE, true, "_rt_vr_right_depth" );
-	rightEyeDepth = leftEyeDepthRef;
+	rightEyeDepth = rightEyeDepthRef;*/
 
-	leftEyeRef.Init( leftEye );
-	rightEyeRef.Init( rightEye );
+	// leftEyeRef.Init( leftEye );
+	// rightEyeRef.Init( rightEye );
 
 	// leftEyeDepthRef.Init( leftEye );
 	// rightEyeDepthRef.Init( rightEye );
@@ -141,24 +193,27 @@ void CVRViewRender::InitEyeRenderTargets()
 	materials->FinishRenderTargetAllocation();
 #endif
 
-	uint dxlevel, recommended_dxlevel;
-	materials->GetDXLevelDefaults( dxlevel, recommended_dxlevel );
+#if ENGINE_QUIVER || ENGINE_CSGO 
+	// uint dxlevel, recommended_dxlevel;
+	// materials->GetDXLevelDefaults( dxlevel, recommended_dxlevel );
 
-	/*if ( recommended_dxlevel >= 90 && recommended_dxlevel != 110 )
+	if ( g_VR.NeedD3DInit() )
 	{
-		OVR_DX9EXToDX11(
-			materials->VR_GetDevice(),
-			materials->VR_GetSubmitInfo( leftEye ),
-			materials->VR_GetSubmitInfo( rightEye )
-		);
-	}*/
+		OVR_InitDX9Device( materials->VR_GetDevice() );
+	}
+
+	// if ( recommended_dxlevel >= 90 && recommended_dxlevel != 110 )
+	{
+		OVR_DX9EXToDX11( materials->VR_GetSubmitInfo( leftEye ), materials->VR_GetSubmitInfo( rightEye ) );
+	}
+#endif
 }
 
 
 void CVRViewRender::UpdateEyeRenderTargets()
 {
 	VRViewParams viewParams = g_VR.GetViewParams();
-	if ( leftEye == NULL || rightEye == NULL || lastWidth != viewParams.rtWidth || lastHeight != viewParams.rtHeight )
+	if ( leftEye == NULL || rightEye == NULL || lastWidth != viewParams.rtWidth || lastHeight != viewParams.rtHeight || g_VR.NeedD3DInit() )
 	{
 		InitEyeRenderTargets();
 	}
@@ -172,17 +227,48 @@ void CVRViewRender::InitEyeMats()
 	_rt_left_kv->SetString( "$basetexture", "_rt_vr_left" );
 
 	KeyValues *_rt_right_kv = new KeyValues( "UnlitGeneric" );
-	_rt_right_kv->SetString( "$basetexture", "_rt_vr_left_depth" );
+	_rt_right_kv->SetString( "$basetexture", "_rt_vr_right" );
 
 	leftEyeMat  = materials->CreateMaterial( "vrmod_left_rt", _rt_left_kv );
 	rightEyeMat = materials->CreateMaterial( "vrmod_right_rt", _rt_right_kv );
 }
 
 
+vrect_t* GetEyeVRect()
+{
+	if ( !g_VR.active )
+		return NULL;
+
+	vrect_t* eyeRect = new vrect_t;
+
+	VRViewParams viewParams = g_VR.GetViewParams();
+	
+	eyeRect->x = 0;
+	eyeRect->y = 0;
+	eyeRect->width = viewParams.rtWidth;
+	eyeRect->height = viewParams.rtHeight;
+	return eyeRect;
+}
+
+
 void CVRViewRender::Render( vrect_t *rect )
 {
+	VPROF_BUDGET( "CVRViewRender::Render", "CVRViewRender::Render" );
+
 	// see view.cpp in source 2013
-	BaseViewRender::Render( rect );
+
+	// dumb
+	/*if ( g_VR.active )
+	{
+		vrect_t* eyeRect = GetEyeVRect();
+		// m_bIsInEyeRender = true;
+		BaseViewRender::Render( eyeRect );
+		// m_bIsInEyeRender = false;
+	}
+	else
+	{*/
+		BaseViewRender::Render( rect );
+	// }
 }
 
 
@@ -191,9 +277,19 @@ void CVRViewRender::PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &
 	if ( g_VR.active )
 	{
 		VRViewParams viewParams = g_VR.GetViewParams();
-		VRTracker* hmd = g_VR.GetTrackerByName("hmd");
+		// VRTracker* hmd = g_VR.GetTrackerByName("hmd");
 
-		eyeView.origin = screenView.origin;
+		VMatrix matOffsetLeft = g_VR.GetMidEyeFromEye( eye );
+
+		// TODO: this might not be correct?
+		// Move eyes to IPD positions.
+		VMatrix worldMatrix;
+		worldMatrix.SetupMatrixOrgAngles( screenView.origin, screenView.angles );
+
+		VMatrix worldFromLeftEye = worldMatrix * matOffsetLeft;
+
+		// Finally convert back to origin+angles.
+		MatrixAngles( worldFromLeftEye.As3x4(), eyeView.angles, eyeView.origin );
 
 		eyeView.width = viewParams.rtWidth;
 		eyeView.height = viewParams.rtHeight;
@@ -203,46 +299,30 @@ void CVRViewRender::PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &
 		else
 			eyeView.fov = viewParams.horizontalFOVLeft;
 
-		eyeView.m_flAspectRatio = VREye::EyeLeft == eye ? viewParams.aspectRatioLeft : viewParams.aspectRatioRight;
+		// aspect is the same on each eye
+		eyeView.m_flAspectRatio = viewParams.aspectRatioLeft;
 	}
-	else
+	else if ( vr_test.GetBool() )
 	{
-		// for testing
-		eyeView.width = 512; // screenView.width;
-		eyeView.height = 512; // screenView.height;
-		eyeView.fov = screenView.fov;
-		eyeView.m_flAspectRatio = 1.0; // screenView.m_flAspectRatio;
-
-		eyeView.origin = screenView.origin;
+		eyeView.width = 512;
+		eyeView.height = 512;
+		eyeView.m_flAspectRatio = 1.0;
 	}
-
-	eyeView.x = screenView.x;
-	eyeView.y = screenView.y;
-
-	eyeView.zNear = 7;
-	eyeView.zFar = 25000;
-	eyeView.m_bOrtho = false;
-
-	eyeView.fovViewmodel = screenView.fovViewmodel;
-	eyeView.m_bCacheFullSceneState = screenView.m_bCacheFullSceneState;
-	eyeView.m_bRenderToSubrectOfLargerScreen = screenView.m_bRenderToSubrectOfLargerScreen;
-	eyeView.m_bOffCenter = screenView.m_bOffCenter;
-	eyeView.zNearViewmodel = screenView.zNearViewmodel;
-	eyeView.zFarViewmodel = screenView.zFarViewmodel;
-
-	eyeView.angles = screenView.angles;
-
-	eyeView.m_flOffCenterBottom = screenView.m_flOffCenterBottom;
-	eyeView.m_flOffCenterLeft   = screenView.m_flOffCenterLeft;
-	eyeView.m_flOffCenterRight  = screenView.m_flOffCenterRight;
-	eyeView.m_flOffCenterTop    = screenView.m_flOffCenterTop;
 }
 
 
 void CVRViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatToDraw )
 {
-	if ( vr_test.GetBool() || g_VR.active )
+	RenderView( view, view, nClearFlags, whatToDraw );
+}
+
+void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudView, int nClearFlags, int whatToDraw )
+{
+#if ENGINE_QUIVER || ENGINE_CSGO
+	if ( /*m_bIsInEyeRender &&*/ (vr_test.GetBool() || g_VR.active) )
 	{
+		VPROF_BUDGET( "CVRViewRender::RenderView", "CVRViewRender::RenderView" );
+
 		UpdateEyeRenderTargets();
 
 		if ( leftEyeMat == NULL || rightEyeMat == NULL )
@@ -255,66 +335,124 @@ void CVRViewRender::RenderView( const CViewSetup &view, int nClearFlags, int wha
 		// draw main screen again
 		if ( vr_desktop_eye.GetInt() == 3 )
 		{
-			BaseViewRender::RenderView( view, nClearFlags, whatToDraw );
+			BaseViewRender::RenderView( view, hudView, nClearFlags, whatToDraw );
 		}
+
+		/*Rect_t src, dst;
+
+		src.x = 0;
+		src.y = 0;
+		src.width  = view.width;
+		src.height = view.height;
+
+		dst.x = 500;
+		dst.y = 0;
+		dst.width  = leftEye->GetActualWidth();
+		dst.height = leftEye->GetActualHeight();*/
+
+		// pRenderContext->GetViewport( src.x, src.y, src.width, src.height );
+		// pRenderContext->SetRenderTarget( materials->FindTexture( "_rt_FullFrameFB", TEXTURE_GROUP_RENDER_TARGET ) );
+		// pRenderContext->Viewport( dst.x, dst.y, dst.width, dst.height );
 
 		// left eye
 		{
-			CViewSetup eyeView;
-			PrepareEyeViewSetup( eyeView, view, VREye::EyeLeft );
-			pRenderContext->PushRenderTargetAndViewport( leftEye, leftEyeDepth, 0, 0, leftEye->GetActualWidth(), leftEye->GetActualWidth() );
-			BaseViewRender::RenderView( eyeView, nClearFlags, RENDERVIEW_DRAWVIEWMODEL );
-			pRenderContext->PopRenderTargetAndViewport();
+			CViewSetup eyeView(view);
+			PrepareEyeViewSetup( eyeView, view, VREye::Left );
+			int rtWidth = leftEye->GetActualWidth();
+			int rtHeight = leftEye->GetActualHeight();
+
+			// pRenderContext->SetRenderTarget( leftEye );
+
+			render->Push3DView( pRenderContext, eyeView, 0, leftEye, GetFrustum() );
+
+			pRenderContext->Viewport( eyeView.x, eyeView.y, eyeView.width, eyeView.height );
+
+			// pRenderContext->PushRenderTargetAndViewport( leftEye, leftEyeDepth, 0, 0, rtWidth, rtHeight );
+			BaseViewRender::RenderView( eyeView, eyeView, nClearFlags, RENDERVIEW_UNSPECIFIED );
+
+			g_VR.Submit( leftEye, VREye::Left );
+
+			render->PopView( pRenderContext, GetFrustum() );
+			// pRenderContext->PopRenderTargetAndViewport();
 		}
 
 		// right eye
 		{
-			CViewSetup eyeView;
-			PrepareEyeViewSetup( eyeView, view, VREye::EyeRight );
-			pRenderContext->PushRenderTargetAndViewport( rightEye, rightEyeDepth, 0, 0, rightEye->GetActualWidth(), rightEye->GetActualWidth() );
-			BaseViewRender::RenderView( eyeView, nClearFlags, RENDERVIEW_DRAWVIEWMODEL );
-			pRenderContext->PopRenderTargetAndViewport();
+			CViewSetup eyeView(view);
+			PrepareEyeViewSetup( eyeView, view, VREye::Right );
+			int rtWidth = rightEye->GetActualWidth();
+			int rtHeight = rightEye->GetActualHeight();
+
+			render->Push3DView( pRenderContext, eyeView, 0, rightEye, GetFrustum() );
+
+			pRenderContext->Viewport( eyeView.x, eyeView.y, eyeView.width, eyeView.height );
+
+			// Rect_t eyeRect = {0, 0, rtWidth, rtHeight};
+			// pRenderContext->SetRenderTarget( rightEye );
+
+			// pRenderContext->PushRenderTargetAndViewport( rightEye, rightEyeDepth, 0, 0, rtWidth, rtHeight );
+			// pRenderContext->SetRenderTarget( rightEye );
+			BaseViewRender::RenderView( eyeView, eyeView, nClearFlags, RENDERVIEW_UNSPECIFIED );
+
+			g_VR.Submit( rightEye, VREye::Right );
+
+			render->PopView( pRenderContext, GetFrustum() );
+			// pRenderContext->PopRenderTargetAndViewport();
 		}
-		
+
+		// pRenderContext->SetRenderTarget( materials->FindTexture( "_rt_FullFrameFB", TEXTURE_GROUP_RENDER_TARGET ) );
+		// pRenderContext->Viewport( src.x, src.y, src.width, src.height );
+
 		if ( !vr_test.GetBool() )
 		{
-			OVR_Submit( materials->VR_GetSubmitInfo( leftEye ), vr::EVREye::Eye_Left );
-			OVR_Submit( materials->VR_GetSubmitInfo( rightEye ), vr::EVREye::Eye_Right );
+			// g_VR.Submit( leftEye, rightEye );
 		}
 
 		if ( vr_debug_rt.GetBool() )
 		{
-			// draw left eye
-			int width = leftEye->GetActualWidth();
-			int height = leftEye->GetActualHeight();
+			if ( leftEyeMat )
+			{
+				// draw left eye
+				int width = leftEye->GetActualWidth() / 2;
+				int height = leftEye->GetActualHeight() / 2;
 
-			pRenderContext->DrawScreenSpaceRectangle(
-				leftEyeMat,
-				0, 0,
-				width,
-				height,
-				0, 0,
-				width-1,
-				height-1,
-				width,
-				height
-			);
+				pRenderContext->DrawScreenSpaceRectangle(
+					leftEyeMat,
+					0, 0,
+					width,
+					height,
+					0, 0,
+					width-1,
+					height-1,
+					width,
+					height
+				);
+			}
 
-			// draw right eye
-			/*width = rightEye->GetActualWidth();
-			height = rightEye->GetActualHeight();
+			if ( rightEyeMat )
+			{
+				// draw right eye
+				int width = rightEye->GetActualWidth() / 2;
+				int height = rightEye->GetActualHeight() / 2;
 
-			pRenderContext->DrawScreenSpaceRectangle(
-				rightEyeMat,
-				width, 0,
-				width,
-				height,
-				0, 0,
-				width-1,
-				height-1,
-				width,
-				height
-			);*/
+				// int posX = ScreenWidth() / 2 - width / 2;
+				// int posY = ScreenHeight() / 2 - height / 2;
+
+				int posX = width;
+				int posY = 0;
+
+				pRenderContext->DrawScreenSpaceRectangle(
+					rightEyeMat,
+					posX, posY,
+					width,
+					height,
+					0, 0,
+					width-1,
+					height-1,
+					width,
+					height
+				);
+			}
 		}
 
 		// crop one of the eyes onto the screen
@@ -351,11 +489,19 @@ void CVRViewRender::RenderView( const CViewSetup &view, int nClearFlags, int wha
 #endif
 	}
 	else
+	#endif
 	{
-		BaseViewRender::RenderView( view, nClearFlags, whatToDraw );
-
-		if ( vr_desktop_simulate_perf.GetBool() )
+		#if ENGINE_OLD
 			BaseViewRender::RenderView( view, nClearFlags, whatToDraw );
+
+			if ( vr_desktop_simulate_perf.GetBool() )
+				BaseViewRender::RenderView( view, nClearFlags, whatToDraw );
+		#else
+			BaseViewRender::RenderView( view, view, nClearFlags, whatToDraw );
+
+			if ( vr_desktop_simulate_perf.GetBool() )
+				BaseViewRender::RenderView( view, view, nClearFlags, whatToDraw );
+		#endif
 	}
 }
 

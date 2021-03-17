@@ -20,10 +20,10 @@
 // Maybe make this a template to use your own base player class here?
 // like using CBaseMultiplayerPlayer instead?
 // =============================================================================
-class CVRBasePlayer : public CBasePlayer
+class CVRBasePlayer : public CVRBasePlayerShared
 {
 public:
-	DECLARE_CLASS( CVRBasePlayer, CBasePlayer );
+	DECLARE_CLASS( CVRBasePlayer, CVRBasePlayerShared );
 	DECLARE_SERVERCLASS();
 	DECLARE_PREDICTABLE();
 	DECLARE_DATADESC();
@@ -38,26 +38,19 @@ public:
 	virtual void                    PostThink();
 	virtual void                    Spawn();
 
-	virtual void                    RegisterUserMessages();
-
 	// CNetworkQAngle( m_angEyeAngles );	// Copied from EyeAngles() so we can send it to the client.
 
 	// ------------------------------------------------------------------------------------------------
 	// Modified Functions if in VR
 	// ------------------------------------------------------------------------------------------------
+	virtual void                    PlayerUse();
+	virtual void                    SendUseEvent( CBaseEntity* pUseEntity );
+	virtual void                    PickupObject( CBaseEntity *pObject, bool bLimitMassAndSize = true );
 
 	// ------------------------------------------------------------------------------------------------
 	// New VR Functions
 	// ------------------------------------------------------------------------------------------------
 
-	// ------------------------------------------------------------------------------------------------
-	// NON-VR Functions
-	// ------------------------------------------------------------------------------------------------
-	virtual void                    SDKPushawayThink( void );
-	virtual bool                    ClientCommand( const CCommand &args );
-
-	CVRBaseCombatWeapon*            GetActiveSDKWeapon() const;
-	virtual void                    CreateViewModel( int viewmodelindex = 0 );
 
 };
 

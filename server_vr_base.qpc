@@ -23,6 +23,8 @@ files
 	{
 		"$VR_SV_DIR/vr_sv_player.cpp"
 		"$VR_SV_DIR/vr_sv_player.h"
+		"$VR_SV_DIR/vr_player_move.cpp"
+		"$VR_SV_DIR/vr_player_move.h"
 	}
 }
 
