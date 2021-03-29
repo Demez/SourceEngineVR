@@ -51,21 +51,19 @@ void CVRPlayerMove::SetupMove( CBasePlayer *player, CUserCmd *ucmd, IMoveHelper 
 	{
 		if ( move->vr_active )
 		{
-			move->m_vecAbsViewAngles.Init();
-			move->m_vecViewAngles.Init();
+			// move->m_vecAbsViewAngles.Init();
+			// move->m_vecViewAngles.Init();
 		}
 
 		move->vr_active = false;
 		move->vr_viewRotation = 0.0f;
-		move->vr_hmdOrigin.Init();
-		move->vr_hmdOriginOffset.Init();
+		move->vr_originOffset.Init();
 		return;
 	}
 
 	move->vr_active = true;
 	move->vr_viewRotation = ucmd->vr_viewRotation;
-	move->vr_hmdOrigin = ucmd->vr_hmdOrigin;
-	move->vr_hmdOriginOffset = ucmd->vr_hmdOriginOffset;
+	move->vr_originOffset = ucmd->vr_originOffset;
 	move->vr_trackers = ucmd->vr_trackers;
 }
 

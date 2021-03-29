@@ -61,10 +61,15 @@ END_SEND_TABLE()*/
 
 
 BEGIN_DATADESC( CVRBasePlayer )
+	// DEFINE_ARRAY( m_VRTrackers, FIELD_EHANDLE, MAX_VR_TRACKERS ),
 END_DATADESC()
 
 // main table
+// IMPLEMENT_SERVERCLASS_ST( CVRBasePlayer, DT_VRBasePlayer )
+// END_SEND_TABLE()
+
 IMPLEMENT_SERVERCLASS_ST( CVRBasePlayer, DT_VRBasePlayer )
+	// SendPropArray3( SENDINFO_ARRAY3(m_VRTrackers), SendPropEHandle( SENDINFO_ARRAY(m_VRTrackers) ) ),
 END_SEND_TABLE()
 
 

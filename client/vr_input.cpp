@@ -213,13 +213,10 @@ static float ResponseCurve( int curve, float x, int axis, float sensitivity )
 // ====================================================================================================
 // actual changes
 // ====================================================================================================
-void CVRInput::JoyStickMove( float frametime, CUserCmd *cmd )
+void CVRInput::JoyStickInput( float frametime, CUserCmd *cmd )
 {
 	if ( !g_VR.active || vr_disable_joy.GetBool() )
-	{
-		BaseClass::JoyStickMove( frametime, cmd );
 		return;
-	}
 
 	// maybe i should use this, makes it so this isn't updated as often, valve used it for a reason
 	// if ( m_flRemainingJoystickSampleTime <= 0 )
@@ -271,9 +268,6 @@ void CVRInput::JoyStickMove( float frametime, CUserCmd *cmd )
 	{
 		KeyUp( &in_joyspeed, NULL );
 	}
-
-	QAngle viewAngles = pPlayer->EyeAngles();
-	engine->SetViewAngles( viewAngles );
 }
 
 extern short GetTrackerIndex(const char* name);
@@ -305,6 +299,30 @@ void WriteTrackerToCmd( CUserCmd *cmd, VRHostTracker* tracker )
 }
 
 
+void WriteFingerCurlsToCmd( CUserCmd *cmd, VRSkeletonAction* skeleton, bool rightHand )
+{
+	if ( skeleton == NULL )
+		return;
+
+	for (int i = 0; i < 5; i++)
+	{
+		if (rightHand)
+		{
+			cmd->vr_fingerCurlsR[i].x = skeleton->fingerCurls[i].x;
+			cmd->vr_fingerCurlsR[i].y = skeleton->fingerCurls[i].y;
+		}
+		else
+		{
+			cmd->vr_fingerCurlsL[i].x = skeleton->fingerCurls[i].x;
+			cmd->vr_fingerCurlsL[i].y = skeleton->fingerCurls[i].y;
+		}
+	}
+}
+
+
+ConVar vr_smooth_amount("vr_smooth_amount", "1.0");
+
+
 // ====================================================================================================
 // handle all the vr inputs
 // ====================================================================================================
@@ -313,7 +331,10 @@ void CVRInput::VRMove( float frametime, CUserCmd *cmd )
 	if ( !g_VR.active )
 		return;
 
+	// TODO: if i can set variables on the client and syncs to the server, then this is really not needed tbh
 	cmd->vr_active = 1;
+
+	JoyStickInput( frametime, cmd );
 
 	C_VRBasePlayer *pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
 	VRHostTracker* hmd = g_VR.GetTrackerByName("hmd");
@@ -334,9 +355,6 @@ void CVRInput::VRMove( float frametime, CUserCmd *cmd )
 		// QuakeVR copy paste funny
 		// also has some stuff for eye position and the rotation, hmm
 		Vector moveInTracking = hmd->pos - lastHeadOrigin;
-		// moveInTracking[0] *= -meters_to_units;
-		// moveInTracking[1] *= -meters_to_units;
-		// moveInTracking[2] = 0;
 
 		lastHeadOrigin = hmd->pos;
 
@@ -344,34 +362,33 @@ void CVRInput::VRMove( float frametime, CUserCmd *cmd )
 		VectorYawRotate(moveInTracking, pPlayer->viewOffset, finalPos);
 		finalPos.z = 0;
 
-		cmd->vr_hmdOriginOffset = finalPos;
+		cmd->vr_originOffset = finalPos;
 
-		cmd->vr_hmdOrigin = hmd->pos;
+		// try using SmoothCurve()?
 
+		// bad
+		QAngle rawAng = hmd->ang;
+		hmd->ang = Lerp(vr_smooth_amount.GetFloat(), m_hmdPrevAngles, hmd->ang);
+		// hmd->ang.Normalize();
 
-		// cmd->forwardmove += cmd->vr_hmdOrigin.x;
-		// cmd->sidemove += cmd->vr_hmdOrigin.y;
+		// WriteTrackerToCmd( cmd, hmd );
+
+		// m_hmdPrevAngles = rawAng;
+		m_hmdPrevAngles = hmd->ang;
 	}
 
 	cmd->vr_viewRotation = pPlayer->viewOffset;
 
-	WriteTrackerToCmd( cmd, g_VR.GetHeadset() );
-	WriteTrackerToCmd( cmd, g_VR.GetLeftController() );
-	WriteTrackerToCmd( cmd, g_VR.GetRightController() );
-
-	/*if ( !vr_disable_eye_ang.GetBool() )
+	for (int i = 0; i < g_VR.m_currentTrackers.Count(); i++ )
 	{
-		VRVector2Action* turning = (VRVector2Action*)g_VR.GetActionByName( "vector2_smoothturn" );
-		if ( turning != NULL )
-		{
-			pPlayer->AddViewRotateOffset( -turning->x * vr_turn_speed.GetFloat() );
-		}
-		viewangles = pPlayer->EyeAngles();
+		WriteTrackerToCmd( cmd, g_VR.m_currentTrackers[i] );
 	}
-	else
-	{
-		engine->GetViewAngles( viewangles );
-	}*/
+
+	// WriteTrackerToCmd( cmd, g_VR.GetLeftController() );
+	// WriteTrackerToCmd( cmd, g_VR.GetRightController() );
+
+	WriteFingerCurlsToCmd( cmd, g_VR.GetLeftHandSkeleton(), false );
+	WriteFingerCurlsToCmd( cmd, g_VR.GetRightHandSkeleton(), true );
 }
 
 
@@ -449,6 +466,17 @@ void CVRInput::AccumulateMouse( int nSlot )
 void CVRInput::AccumulateMouse()
 {
 	AccumulateMouse( 0 );
+}
+
+
+void CVRInput::AdjustAngles( int nSlot, float frametime )
+{
+	if ( !g_VR.active )
+		return BaseClass::AdjustAngles( nSlot, frametime );
+
+	C_VRBasePlayer *pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
+	QAngle viewAngles = pPlayer->EyeAngles();
+	engine->SetViewAngles( viewAngles );
 }
 
 

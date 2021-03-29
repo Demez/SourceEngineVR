@@ -15,10 +15,15 @@
 class CVRMoveData: public CMoveData
 {
 public:
+	CmdVRTracker* GetTracker( const char* name );
+
+	CmdVRTracker* GetHeadset()          { return GetTracker("hmd"); }
+	CmdVRTracker* GetLeftController()   { return GetTracker("pose_lefthand"); }
+	CmdVRTracker* GetRightController()  { return GetTracker("pose_righthand"); }
+
 	bool						vr_active;
 	float						vr_viewRotation;
-	Vector						vr_hmdOrigin;
-	Vector						vr_hmdOriginOffset;
+	Vector						vr_originOffset;
 	CUtlVector< CmdVRTracker >	vr_trackers;
 };
 
@@ -46,6 +51,8 @@ public:
 
 	virtual void            ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove );
 	virtual void            PlayerMove();
+
+	virtual void            ProcessVRMovement( CVRBasePlayerShared *pPlayer, CVRMoveData *pMove );
 
 	Vector					m_oldViewPos;
 };

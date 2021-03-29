@@ -4,7 +4,6 @@
 #pragma once
 
 #include "vr.h"
-#include "vr_openvr.h"
 #include "kbutton.h"
 #include "input.h"
 
@@ -23,23 +22,27 @@ public:
 		bInNextWeapon = false;
 	}
 
-	// actual input changes
-	virtual void JoyStickMove( float frametime, CUserCmd *cmd );
+	// button inputs
 	virtual int GetButtonBits( bool bResetState );
+	virtual void CalcButtonBitsBool( const char* action, int in_button );
+	virtual void CalcButtonBitsToggleCmd( const char* action, bool& bEnabled, const char* cmd );
 
 	// new
 	virtual void VRMove( float frametime, CUserCmd *cmd );
-	virtual void CalcButtonBitsBool( const char* action, int in_button );
-	virtual void CalcButtonBitsToggleCmd( const char* action, bool& bEnabled, const char* cmd );
+	virtual void JoyStickInput( float frametime, CUserCmd *cmd );
 
 	// minor input changes
 	virtual void AccumulateMouse();
 	virtual void AccumulateMouse( int nSlot );
+	virtual void AdjustAngles( int nSlot, float frametime );
 
 	Vector oldViewPos;
 
 	Vector headOrigin;
 	Vector lastHeadOrigin;
+
+	// test
+	QAngle m_hmdPrevAngles;
 
 	int m_bits;
 	bool bFlashlightOn;

@@ -38,7 +38,10 @@ VMatrix OpenVRToSourceCoordinateSystem(const VMatrix& vortex, bool scale)
 {
 	// const float inchesPerMeter = (float)(39.3700787);
 
-	float inchesPerMeter = (float)(39.3700787);
+	// 10.0f/0.254f;
+	// 39.37012415030996
+	// float inchesPerMeter = (float)(39.3700787);
+	double inchesPerMeter = (double)(39.37012415030996);
 
 	if (scale)
 		inchesPerMeter *= vr_scale.GetFloat();
@@ -103,7 +106,6 @@ VMatrix VMatrixFrom33(const float v[3][3])
 
 
 
-
 VMatrix LocalToWorld( const Vector& localPos, const QAngle& localAng, const Vector& originPos, const QAngle& originAng )
 {
 	VMatrix localTransform;
@@ -121,7 +123,7 @@ VMatrix LocalToWorld( const Vector& localPos, const QAngle& localAng, const Vect
 }
 
 
-VMatrix WorldToLocal( const Vector& worldPos, const QAngle& worldAng, const Vector& objectPos, const QAngle& objectAng )
+VMatrix WorldToLocalOld( const Vector& worldPos, const QAngle& worldAng, const Vector& objectPos, const QAngle& objectAng )
 {
 	VMatrix worldTransform;
 	worldTransform.SetupMatrixOrgAngles( worldPos, worldAng );
@@ -135,5 +137,124 @@ VMatrix WorldToLocal( const Vector& worldPos, const QAngle& worldAng, const Vect
 
 	VMatrix localToWorld = worldTransform.InverseTR() * objectTranform;
 	return localToWorld;
+}
+
+
+Vector WorldToLocalPos( const Vector& worldPos, const QAngle& worldAng, const Vector& objectPos, const QAngle& objectAng )
+{
+	VMatrix worldMatrix, childMatrix;
+	worldMatrix.SetupMatrixOrgAngles( worldPos, worldAng );
+	childMatrix.SetupMatrixOrgAngles( objectPos, objectAng );
+
+	// WorldToLocal
+	return worldMatrix.VMul4x3Transpose( objectPos );
+}
+
+Vector WorldToLocalPos( const matrix3x4_t& worldCoord, const matrix3x4_t& objectCoord )
+{
+	Vector objectPos;
+	MatrixGetColumn( objectCoord, 3, objectPos );
+
+	// WorldToLocal
+	VMatrix worldCoordMat(worldCoord);
+	return worldCoordMat.VMul4x3Transpose( objectPos );
+}
+
+
+QAngle WorldToLocalAng( const Vector& worldPos, const QAngle& worldAng, const Vector& objectPos, const QAngle& objectAng )
+{
+	VMatrix worldMatrix, childMatrix;
+	worldMatrix.SetupMatrixOrgAngles( worldPos, worldAng );
+	childMatrix.SetupMatrixOrgAngles( objectPos, objectAng );
+
+	// I have the axes of local space in world space. (childMatrix)
+	// I want to compute those world space axes in the parent's local space
+	// and set that transform (as angles) on the child's object so the net
+	// result is that the child is now in parent space, but still oriented the same way
+	VMatrix tmp = worldMatrix.Transpose(); // world->parent
+	tmp.MatrixMul( childMatrix, worldMatrix ); // child->parent
+	QAngle angles;
+	MatrixToAngles( worldMatrix, angles );
+
+	return angles;
+}
+
+
+
+void WorldToLocal( const Vector& worldPos, const QAngle& worldAng, const Vector& objectPos, const QAngle& objectAng, Vector& outPos, QAngle& outAng )
+{
+	VMatrix worldMatrix, childMatrix;
+	worldMatrix.SetupMatrixOrgAngles( worldPos, worldAng );
+	childMatrix.SetupMatrixOrgAngles( objectPos, objectAng );
+
+	// WorldToLocal
+	outPos = worldMatrix.VMul4x3Transpose( objectPos );
+
+	// I have the axes of local space in world space. (childMatrix)
+	// I want to compute those world space axes in the parent's local space
+	// and set that transform (as angles) on the child's object so the net
+	// result is that the child is now in parent space, but still oriented the same way
+	VMatrix tmp = worldMatrix.Transpose(); // world->parent
+	tmp.MatrixMul( childMatrix, worldMatrix ); // child->parent
+	MatrixToAngles( worldMatrix, outAng );
+}
+
+
+void WorldToLocal( const VMatrix &worldCoord, const VMatrix& objectCoord, Vector& outPos, QAngle& outAng )
+{
+	Vector objectPos;
+	MatrixGetColumn( objectCoord.As3x4(), 3, objectPos );
+
+	// WorldToLocal
+	outPos = worldCoord.VMul4x3Transpose( objectPos );
+
+	// I have the axes of local space in world space. (childMatrix)
+	// I want to compute those world space axes in the parent's local space
+	// and set that transform (as angles) on the child's object so the net
+	// result is that the child is now in parent space, but still oriented the same way
+	VMatrix tmp = worldCoord.Transpose(); // world->parent
+	VMatrix worldCoordCpy(worldCoord);
+	tmp.MatrixMul( objectCoord, worldCoordCpy ); // child->parent
+	MatrixToAngles( worldCoordCpy, outAng );
+}
+
+
+void WorldToLocal( const matrix3x4_t& worldCoord, const matrix3x4_t& objectCoord, Vector& outPos, QAngle& outAng )
+{
+	WorldToLocal( VMatrix(worldCoord), VMatrix(objectCoord), outPos, outAng );
+}
+
+
+
+void LocalToWorld( const Vector& worldPos, const QAngle& worldAng, const Vector& localPos, const QAngle& localAng, Vector& outPos, QAngle& outAng )
+{
+	matrix3x4_t matWorldCoord;
+	AngleMatrix( worldAng, matWorldCoord );
+	MatrixSetColumn( worldPos, 3, matWorldCoord );
+
+	LocalToWorld( matWorldCoord, localPos, localAng, outPos, outAng );
+}
+
+
+void LocalToWorld( const matrix3x4_t& matWorldCoord, const Vector& localPos, const QAngle& localAng, Vector& outPos, QAngle& outAng )
+{
+	matrix3x4_t matLocalCoord;
+	LocalToWorld( matWorldCoord, localPos, localAng, matLocalCoord );
+
+	// pull our absolute position and angles out of the matrix
+	MatrixGetColumn( matLocalCoord, 3, outPos ); 
+	MatrixAngles( matLocalCoord, outAng );
+}
+
+
+void LocalToWorld( const matrix3x4_t& matWorldCoord, const Vector& localPos, const QAngle& localAng, matrix3x4_t& outCoord )
+{
+	matrix3x4_t matEntityToParent;
+
+	AngleMatrix( localAng, matEntityToParent );
+	MatrixSetColumn( localPos, 3, matEntityToParent );
+
+	// slap the saved local entity origin and angles on top of the hands origin and angles
+	ConcatTransforms( matWorldCoord, matEntityToParent, outCoord );
 }
 

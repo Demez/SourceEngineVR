@@ -59,13 +59,6 @@ files
 		// "$VR_CL_DIR/vr_minhook.cpp"     [$USE_MINHOOK]
 		// "$VR_CL_DIR/vr_minhook.h"       [$USE_MINHOOK]
 		
-		"$VR_CL_DIR/vr_openvr.cpp"
-		{
-			precompiled_header "none"
-		}
-		
-		"$VR_CL_DIR/vr_openvr.h"
-		
 		"$VR_CL_DIR/vr.cpp"
 		"$VR_CL_DIR/vr.h"
 		"$VR_CL_DIR/vr_viewrender.cpp"

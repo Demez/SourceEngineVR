@@ -10,17 +10,6 @@
 // #include "usercmd.h"
 
 
-enum class EVRTracker
-{
-	LHAND = 0,
-	RHAND,
-	HIP,
-	LFOOT,
-	RFOOT,
-	COUNT
-};
-
-
 struct CmdVRTracker
 {
 	const char* name;

@@ -13,7 +13,7 @@
 extern ConVar vr_fov_override;
 
 ConVar vr_desktop_simulate_perf("vr_desktop_simulate_perf", "0", FCVAR_CLIENTDLL);
-ConVar vr_debug_rt("vr_debug_rt", "1", FCVAR_CLIENTDLL);
+ConVar vr_debug_rt("vr_debug_rt", "0", FCVAR_CLIENTDLL);
 ConVar vr_desktop_eye("vr_desktop_eye", "3", FCVAR_CLIENTDLL, "0 - no screen view, 1 - crop left eye, 2 - the right eye, 3 - rerender the desktop view");
 ConVar vr_test("vr_test", "0", FCVAR_CLIENTDLL);
 // ConVar vr_res("vr_res", "0", FCVAR_CLIENTDLL, "Override the render target resolution, 0 to disable");
@@ -272,6 +272,9 @@ void CVRViewRender::Render( vrect_t *rect )
 }
 
 
+ConVar vr_ipd_test("vr_ipd_test", "1.0");
+
+
 void CVRViewRender::PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &screenView, VREye eye )
 {
 	if ( g_VR.active )
@@ -279,17 +282,57 @@ void CVRViewRender::PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &
 		VRViewParams viewParams = g_VR.GetViewParams();
 		// VRTracker* hmd = g_VR.GetTrackerByName("hmd");
 
-		VMatrix matOffsetLeft = g_VR.GetMidEyeFromEye( eye );
+		VMatrix matOffset = g_VR.GetMidEyeFromEye( eye );
+
+
+		vr::HmdMatrix34_t transformVR = g_pOVR->GetEyeToHeadTransform( ToOVREye(eye) );
+		VMatrix transform = VMatrixFrom34( transformVR.m );
+		// VMatrix transform = OpenVRToSourceCoordinateSystem( VMatrixFrom34( transformVR.m ), false );
+
+		float ipd = transform[0][3] * 2;
+		float eyez = transform[2][3] * 39.37012415030996;
+
+		float ipdTest = vr_ipd_test.GetFloat();
+		if (eye == VREye::Left)
+			ipdTest = -ipdTest;
+
+		// origin = origin + g_VR.view.angles:Forward()*-(eyez*g_VR.scale)
+
+		
+		Vector forward, right, up;
+		AngleVectors(screenView.angles, &forward, &right, &up);
+
+		Vector eyeOriginOffset = screenView.origin + forward * -(ipd);
+
+		Vector testOffset = matOffset.GetTranslation();
+		testOffset *= ipdTest;
+		// matOffset.SetTranslation(testOffset);
+
+		if (eye == VREye::Left)
+		{
+			// matOffset[1][3] = matOffset[1][3] * -(ipd * 0.5 * 39.37012415030996);
+			eyeOriginOffset = right * -(ipd * 0.5 * 39.37012415030996);
+		}
+		else
+		{
+			// matOffset[1][3] = matOffset[1][3] * (ipd * 0.5 * 39.37012415030996);
+			eyeOriginOffset = right * (ipd * 0.5 * 39.37012415030996);
+		}
+
+		// matOffset[1][3] = ipdTest;
+		// matOffset[1][3] = (ipd * 39.37012415030996) * ipdTest;
+		// matOffset[1][3] *= ipdTest;
+
 
 		// TODO: this might not be correct?
 		// Move eyes to IPD positions.
 		VMatrix worldMatrix;
 		worldMatrix.SetupMatrixOrgAngles( screenView.origin, screenView.angles );
 
-		VMatrix worldFromLeftEye = worldMatrix * matOffsetLeft;
+		VMatrix worldFromEye = worldMatrix * matOffset;
 
 		// Finally convert back to origin+angles.
-		MatrixAngles( worldFromLeftEye.As3x4(), eyeView.angles, eyeView.origin );
+		MatrixAngles( worldFromEye.As3x4(), eyeView.angles, eyeView.origin );
 
 		eyeView.width = viewParams.rtWidth;
 		eyeView.height = viewParams.rtHeight;
@@ -297,10 +340,9 @@ void CVRViewRender::PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &
 		if ( vr_fov_override.GetInt() != 0 )
 			eyeView.fov = vr_fov_override.GetInt();
 		else
-			eyeView.fov = viewParams.horizontalFOVLeft;
+			eyeView.fov = viewParams.left.hFOV;
 
-		// aspect is the same on each eye
-		eyeView.m_flAspectRatio = viewParams.aspectRatioLeft;
+		eyeView.m_flAspectRatio = viewParams.aspectRatio;
 	}
 	else if ( vr_test.GetBool() )
 	{

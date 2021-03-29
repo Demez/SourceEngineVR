@@ -69,44 +69,8 @@ static bool ReadUserCmdDeltaFloat( bf_write *buf, char *what, float from, float 
 	return false;
 }
 
-// const std::vector<const char*> g_trackerNames = 
-const int g_trackerCount = 6;
 
-const char* g_trackerNames[g_trackerCount] = 
-{
-	"hmd",
-	"pose_lefthand",
-	"pose_righthand",
-	"pose_hip",
-	"pose_leftfoot",
-	"pose_rightfoot",
-};
-
-
-const char* GetTrackerName(short index)
-{
-	if (index < 0 || index > g_trackerCount)
-	{
-		Warning("Invalid tracker index %h", index);
-		return "";
-	}
-
-	return g_trackerNames[index];
-}
-
-
-short GetTrackerIndex(const char* name)
-{
-	for (int i = 0; i < g_trackerCount; i++)
-	{
-		if ( V_strcmp(name, g_trackerNames[i]) == 0 )
-		{
-			return i;
-		}
-	}
-
-	return -1;
-}
+#define FROM_TRACKER(source) hasPrevTracker ? source : 0.0
 
 
 //-----------------------------------------------------------------------------
@@ -125,16 +89,15 @@ void WriteUsercmdVR( bf_write *buf, CUserCmd *to, CUserCmd *from )
 	// TODO: Can probably get away with fewer bits.
 	WriteUserCmdDeltaShort( buf, "vr_active", from->vr_active, to->vr_active );
 
+	if (!to->vr_active)
+		return;
+
 	WriteUserCmdDeltaFloat( buf, "vr_viewRotation", from->vr_viewRotation, to->vr_viewRotation );
 
 	// could probably use buf->WriteBitVec3Coord( to );
-	WriteUserCmdDeltaFloat( buf, "vr_hmdOrigin[0]", from->vr_hmdOrigin[0], to->vr_hmdOrigin[0] );
-	WriteUserCmdDeltaFloat( buf, "vr_hmdOrigin[1]", from->vr_hmdOrigin[1], to->vr_hmdOrigin[1] );
-	WriteUserCmdDeltaFloat( buf, "vr_hmdOrigin[2]", from->vr_hmdOrigin[2], to->vr_hmdOrigin[2] );
-
-	WriteUserCmdDeltaFloat( buf, "vr_hmdOriginOffset[0]", from->vr_hmdOriginOffset[0], to->vr_hmdOriginOffset[0] );
-	WriteUserCmdDeltaFloat( buf, "vr_hmdOriginOffset[1]", from->vr_hmdOriginOffset[1], to->vr_hmdOriginOffset[1] );
-	WriteUserCmdDeltaFloat( buf, "vr_hmdOriginOffset[2]", from->vr_hmdOriginOffset[2], to->vr_hmdOriginOffset[2] );
+	WriteUserCmdDeltaFloat( buf, "vr_originOffset[0]", from->vr_originOffset[0], to->vr_originOffset[0] );
+	WriteUserCmdDeltaFloat( buf, "vr_originOffset[1]", from->vr_originOffset[1], to->vr_originOffset[1] );
+	WriteUserCmdDeltaFloat( buf, "vr_originOffset[2]", from->vr_originOffset[2], to->vr_originOffset[2] );
 
 	// handle trackers
 	if ( to->vr_trackers.Count() != 0 )
@@ -146,40 +109,48 @@ void WriteUsercmdVR( bf_write *buf, CUserCmd *to, CUserCmd *from )
 
 		for (int i = 0; i < to->vr_trackers.Count(); i++)
 		{
-			// const_cast<CUserCmd*>(from)->vr_trackers.AddToTail( CmdVRTracker() );
+			bool hasPrevTracker = from->vr_trackers.Count() == i + 1;
+			
 			// less data to send by sending a single short for the name index instead of the full string
-			// const_cast<CUserCmd*>(to)->vr_trackers[i].index = GetTrackerIndex(to->vr_trackers[i].name);
-			if ( from->vr_trackers.Count() == i + 1 )
-			{
-				WriteUserCmdDeltaShort( buf, "vr_trackers[i].index", from->vr_trackers[i].index, to->vr_trackers[i].index );
+			WriteUserCmdDeltaShort( buf, "vr_trackers[i].index", FROM_TRACKER(from->vr_trackers[i].index), to->vr_trackers[i].index );
 
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[0]", from->vr_trackers[i].pos[0], to->vr_trackers[i].pos[0] );
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[1]", from->vr_trackers[i].pos[1], to->vr_trackers[i].pos[1] );
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[2]", from->vr_trackers[i].pos[2], to->vr_trackers[i].pos[2] );
+			WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[0]", FROM_TRACKER(from->vr_trackers[i].pos[0]), to->vr_trackers[i].pos[0] );
+			WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[1]", FROM_TRACKER(from->vr_trackers[i].pos[1]), to->vr_trackers[i].pos[1] );
+			WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[2]", FROM_TRACKER(from->vr_trackers[i].pos[2]), to->vr_trackers[i].pos[2] );
 
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[0]", from->vr_trackers[i].ang[0], to->vr_trackers[i].ang[0] );
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[1]", from->vr_trackers[i].ang[1], to->vr_trackers[i].ang[1] );
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[2]", from->vr_trackers[i].ang[2], to->vr_trackers[i].ang[2] );
-			}
-			else
-			{
-				WriteUserCmdDeltaShort( buf, "vr_trackers[i].index", -1, to->vr_trackers[i].index );
-
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[0]", 0.0, to->vr_trackers[i].pos[0] );
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[1]", 0.0, to->vr_trackers[i].pos[1] );
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[2]", 0.0, to->vr_trackers[i].pos[2] );
-
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[0]", 0.0, to->vr_trackers[i].ang[0] );
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[1]", 0.0, to->vr_trackers[i].ang[1] );
-				WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[2]", 0.0, to->vr_trackers[i].ang[2] );
-			}
+			WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[0]", FROM_TRACKER(from->vr_trackers[i].ang[0]), to->vr_trackers[i].ang[0] );
+			WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[1]", FROM_TRACKER(from->vr_trackers[i].ang[1]), to->vr_trackers[i].ang[1] );
+			WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[2]", FROM_TRACKER(from->vr_trackers[i].ang[2]), to->vr_trackers[i].ang[2] );
 		}
 	}
 	else
 	{
 		buf->WriteOneBit( 0 );
 	}
+
+	// Left hand skeleton
+	for (int i = 0; i < 5; i++)
+	{
+		WriteUserCmdDeltaFloat( buf, "vr_fingerCurlsL[i].x", from->vr_fingerCurlsL[i].x, to->vr_fingerCurlsL[0].x );
+		WriteUserCmdDeltaFloat( buf, "vr_fingerCurlsL[i].y", from->vr_fingerCurlsL[i].y, to->vr_fingerCurlsL[0].y );
+	}
+
+	// Right hand skeleton
+	for (int i = 0; i < 5; i++)
+	{
+		WriteUserCmdDeltaFloat( buf, "vr_fingerCurlsR[i].x", from->vr_fingerCurlsR[i].x, to->vr_fingerCurlsR[0].x );
+		WriteUserCmdDeltaFloat( buf, "vr_fingerCurlsR[i].y", from->vr_fingerCurlsR[i].y, to->vr_fingerCurlsR[0].y );
+	}
 }
+
+
+#define GET_VEC(output) \
+	if ( buf->ReadOneBit() ) output[0] = buf->ReadFloat(); \
+	if ( buf->ReadOneBit() ) output[1] = buf->ReadFloat(); \
+	if ( buf->ReadOneBit() ) output[2] = buf->ReadFloat()
+
+
+extern const char* GetTrackerName( short index );
 
 //-----------------------------------------------------------------------------
 // Purpose: Read in a delta compressed usercommand.
@@ -193,72 +164,63 @@ void ReadUsercmdVR( bf_read *buf, CUserCmd *move, CUserCmd *from )
 	if ( buf->ReadOneBit() )
 		move->vr_active = buf->ReadShort();
 
+	if (!move->vr_active)
+		return;
+
 	if ( buf->ReadOneBit() )
 		move->vr_viewRotation = buf->ReadFloat();
 
-
 	// Read direction
 	if ( buf->ReadOneBit() )
-		move->vr_hmdOrigin[0] = buf->ReadFloat();
+		move->vr_originOffset[0] = buf->ReadFloat();
 
 	if ( buf->ReadOneBit() )
-		move->vr_hmdOrigin[1] = buf->ReadFloat();
+		move->vr_originOffset[1] = buf->ReadFloat();
 
 	if ( buf->ReadOneBit() )
-		move->vr_hmdOrigin[2] = buf->ReadFloat();
-
-
-	if ( buf->ReadOneBit() )
-		move->vr_hmdOriginOffset[0] = buf->ReadFloat();
-
-	if ( buf->ReadOneBit() )
-		move->vr_hmdOriginOffset[1] = buf->ReadFloat();
-
-	if ( buf->ReadOneBit() )
-		move->vr_hmdOriginOffset[2] = buf->ReadFloat();
+		move->vr_originOffset[2] = buf->ReadFloat();
 
 
 	if ( buf->ReadOneBit() )
 	{
-		// move->vr_trackers.SetCount( buf->ReadShort() );
 		int count = buf->ReadShort();
 
-		int i;
-		for (i = 0; i < count; i++)
+		for (int i = 0; i < count; i++)
 		{
 			move->vr_trackers.AddToTail( CmdVRTracker() );
 
-			if ( buf->ReadOneBit() )
-				move->vr_trackers[i].index = buf->ReadShort();
-			// move->vr_trackers[i].name = GetTrackerName(move->vr_trackers[i].index);
+			if (buf->ReadOneBit()) move->vr_trackers[i].index = buf->ReadShort();
 
-			/*short nameLength = buf->ReadShort();
-			
-			char name[32] = "\0";
-			buf->ReadString(name, nameLength);
-			move->vr_trackers[i].name = name;*/
+			if (buf->ReadOneBit()) move->vr_trackers[i].pos[0] = buf->ReadFloat();
+			if (buf->ReadOneBit()) move->vr_trackers[i].pos[1] = buf->ReadFloat();
+			if (buf->ReadOneBit()) move->vr_trackers[i].pos[2] = buf->ReadFloat();
+
+			if (buf->ReadOneBit()) move->vr_trackers[i].ang[0] = buf->ReadFloat();
+			if (buf->ReadOneBit()) move->vr_trackers[i].ang[1] = buf->ReadFloat();
+			if (buf->ReadOneBit()) move->vr_trackers[i].ang[2] = buf->ReadFloat();
 
 			move->vr_trackers[i].name = GetTrackerName(move->vr_trackers[i].index);
-
-			if ( buf->ReadOneBit() )
-				move->vr_trackers[i].pos[0] = buf->ReadFloat();
-
-			if ( buf->ReadOneBit() )
-				move->vr_trackers[i].pos[1] = buf->ReadFloat();
-
-			if ( buf->ReadOneBit() )
-				move->vr_trackers[i].pos[2] = buf->ReadFloat();
-
-
-			if ( buf->ReadOneBit() )
-				move->vr_trackers[i].ang[0] = buf->ReadFloat();
-
-			if ( buf->ReadOneBit() )
-				move->vr_trackers[i].ang[1] = buf->ReadFloat();
-
-			if ( buf->ReadOneBit() )
-				move->vr_trackers[i].ang[2] = buf->ReadFloat();
 		}
+	}
+
+	// Left hand skeleton
+	for (int i = 0; i < 5; i++)
+	{
+		if ( buf->ReadOneBit() )
+			move->vr_fingerCurlsL[i].x = buf->ReadFloat();
+
+		if ( buf->ReadOneBit() )
+			move->vr_fingerCurlsL[i].y = buf->ReadFloat();
+	}
+
+	// Right hand skeleton
+	for (int i = 0; i < 5; i++)
+	{
+		if ( buf->ReadOneBit() )
+			move->vr_fingerCurlsR[i].x = buf->ReadFloat();
+
+		if ( buf->ReadOneBit() )
+			move->vr_fingerCurlsR[i].y = buf->ReadFloat();
 	}
 }
 

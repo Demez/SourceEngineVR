@@ -26,10 +26,43 @@ static const char *pFollowerBoneNames[] =
 	"ValveBiped.Bip01_R_Foot",
 };
 
+IMPLEMENT_NETWORKCLASS( CVRBasePlayerShared, DT_VRBasePlayerShared )
+
+#ifdef CLIENT_DLL
+
+BEGIN_PREDICTION_DATA( CVRBasePlayerShared )
+	// DEFINE_PRED_ARRAY( m_VRTrackers, FIELD_EHANDLE, MAX_VR_TRACKERS, FTYPEDESC_INSENDTABLE ),
+END_PREDICTION_DATA()
+
+#else
+
+BEGIN_DATADESC( CVRBasePlayerShared )
+	// DEFINE_ARRAY( m_VRTrackers, FIELD_EHANDLE, MAX_VR_TRACKERS ),
+	// DEFINE_AUTO_ARRAY( m_VRTrackers, FIELD_EHANDLE ),
+END_DATADESC()
+
+#endif
+
+
+BEGIN_NETWORK_TABLE( CVRBasePlayerShared, DT_VRBasePlayerShared )
+#ifdef CLIENT_DLL
+	// RecvPropArray3( RECVINFO_ARRAY(m_VRTrackers), RecvPropEHandle( RECVINFO( m_VRTrackers[0] ) ) ),
+#else
+	// SendPropArray3( SENDINFO_ARRAY3(m_VRTrackers), SendPropEHandle( SENDINFO_ARRAY(m_VRTrackers) ) ),
+#endif
+END_NETWORK_TABLE()
+
 
 void CVRBasePlayerShared::Spawn()
 {
 	BaseClass::Spawn();
+
+#if 0 // def GAME_DLL
+	for (int i = 0; i < MAX_VR_TRACKERS; i++)
+	{
+		m_VRTrackers.Set( i, INVALID_EHANDLE );
+	}
+#endif
 }
 
 
@@ -51,26 +84,55 @@ void CVRBasePlayerShared::InitBoneFollowers()
 	// Init our followers
 	m_BoneFollowerManager.InitBoneFollowers( this, ARRAYSIZE(pFollowerBoneNames), pFollowerBoneNames );*/
 }
-#endif
 
 
-void CVRBasePlayerShared::VRThink()
+void CVRBasePlayerShared::SetTransmit( CCheckTransmitInfo *pInfo, bool bAlways )
 {
-#if 1 // def GAME_DLL
-	// m_BoneFollowerManager.UpdateBoneFollowers(this);
-	HandleVRMoveData();
+	// Skip this work if we're already marked for transmission.
+	if ( pInfo->m_pTransmitEdict->Get( entindex() ) )
+		return;
+
+	BaseClass::SetTransmit( pInfo, bAlways );
+
+	/*for (int i = 0; i < MAX_VR_TRACKERS; i++)
+	{
+		CVRTracker *pTracker = m_VRTrackers[i];
+		if ( !pTracker )
+			continue;
+
+		pTracker->SetTransmit( pInfo, bAlways );
+	}*/
+}
 #endif
+
+
+void CVRBasePlayerShared::PreThink()
+{
+	BaseClass::PreThink();
+
+	HandleVRMoveData();
 }
 
 
 void CVRBasePlayerShared::HandleVRMoveData()
 {
+#if ENGINE_ASW
+	m_bInVR = false;
+#else
 	m_bInVR = GetVRMoveData()->vr_active;
+#endif
 
 	// TODO: delete the trackers
 	if ( !m_bInVR )
 		return;
 
+	// call moved to vr_gamemovement.cpp for prediction
+	// UpdateTrackers();
+}
+
+
+void CVRBasePlayerShared::UpdateTrackers()
+{
 	for (int i = 0; i < GetVRMoveData()->vr_trackers.Count(); i++)
 	{
 		CmdVRTracker cmdTracker = GetVRMoveData()->vr_trackers[i];
@@ -79,36 +141,34 @@ void CVRBasePlayerShared::HandleVRMoveData()
 		if ( cmdTracker.name == NULL )
 			continue;
 
-		CVRTracker* tracker = GetTracker(cmdTracker.name);
+		CVRTracker* tracker = GetTracker( cmdTracker.index );
 		if ( tracker )
 		{
-			tracker->UpdateTracker(cmdTracker);
+#if 0 // def CLIENT_DLL
+			// do we actually even need this check on the client?
+			if ( IsLocalPlayer() )  // can only predict if this is the local player
+#endif
+			{
+				if ( !tracker->m_bInit )
+				{
+					tracker->InitTracker(cmdTracker, this);
+				}
+				else
+				{
+					tracker->UpdateTracker(cmdTracker);
+				}
+			}
 		}
 		else
 		{
 			tracker = CreateTracker(cmdTracker);
 		}
 
-		// wtf
-		if ( tracker == NULL )
-			continue;
-
-#ifdef GAME_DLL
-		/*if ( V_strcmp(tracker->m_trackerName, "pose_lefthand") == 0 )
-		{
-			m_BoneFollowerManager.AddBoneFollower( tracker, "ValveBiped.Bip01_L_Hand" );
-		}
-
-		else if ( V_strcmp(tracker->m_trackerName, "pose_righthand") == 0 )
-		{
-			m_BoneFollowerManager.AddBoneFollower( tracker, "ValveBiped.Bip01_R_Hand" );
-		}*/
-#endif
 	}
 }
 
 
-CVRTracker* CVRBasePlayerShared::GetTracker( const char* name )
+CVRTracker* CVRBasePlayerShared::GetTracker( EVRTracker type )
 {
 	if ( !m_bInVR )
 		return NULL;
@@ -116,12 +176,28 @@ CVRTracker* CVRBasePlayerShared::GetTracker( const char* name )
 	for (int i = 0; i < m_VRTrackers.Count(); i++)
 	{
 		CVRTracker* tracker = m_VRTrackers[i];
-		if ( V_strcmp(tracker->m_trackerName, name) == 0 )
+
+		if ( tracker == NULL )
+			continue;
+
+		if ( tracker->m_type == type )
 			return tracker;
 	}
 
 	return NULL;
 }
+
+
+CVRTracker* CVRBasePlayerShared::GetTracker( short index )
+{
+	return GetTracker( GetTrackerEnum(index) );
+}
+
+
+/*CVRTracker* CVRBasePlayerShared::GetTracker( const char* name )
+{
+	return GetTracker( GetTrackerEnum(name) );
+}*/
 
 
 CVRTracker* CVRBasePlayerShared::CreateTracker( CmdVRTracker& cmdTracker )
@@ -130,29 +206,25 @@ CVRTracker* CVRBasePlayerShared::CreateTracker( CmdVRTracker& cmdTracker )
 		return NULL;
 
 	// uhhhh
-#ifdef GAME_DLL
 	CVRTracker* tracker;
-	if ( V_strcmp(cmdTracker.name, "pose_lefthand") == 0 || V_strcmp(cmdTracker.name, "pose_righthand") == 0 )
+	EVRTracker type = GetTrackerEnum(cmdTracker.index);
+	
+	if ( type == EVRTracker::LHAND || type == EVRTracker::RHAND )
 	{
-		tracker = (CVRTracker*)CreateEntityByName("vr_controller");
+		tracker = new CVRController;
 	}
 	else
 	{
-		tracker = (CVRTracker*)CreateEntityByName("vr_tracker");
+		tracker = new CVRTracker;
 	}
 
 	if ( tracker == NULL )
 		return NULL;
 
-	// tracker->InitializeAsClientEntity("", false);
-	DispatchSpawn(tracker);
-	tracker->InitTracker(cmdTracker, this);
-
-	m_VRTrackers.AddToTail(tracker);
+	tracker->Spawn();
+	tracker->InitTracker( cmdTracker, this );
+	m_VRTrackers.AddToTail( tracker );
 	return tracker;
-#else
-	return NULL;
-#endif
 }
 
 
@@ -161,36 +233,6 @@ CBaseEntity* CVRBasePlayerShared::FindUseEntity()
 	// CVRController will handle this
 	if ( !m_bInVR )
 		return BaseClass::FindUseEntity();
-
-#if 0
-	// NOTE: Some debris objects are useable too, so hit those as well
-	// A button, etc. can be made out of clip brushes, make sure it's +useable via a traceline, too.
-	int useableContents = MASK_SOLID | CONTENTS_DEBRIS | CONTENTS_PLAYERCLIP;
-
-	Vector boxSize(16, 16, 16);
-	Vector controllerOrigin(0, 0, 0);
-
-	trace_t tr;
-
-	// Demez TODO: same issue with not knowing what controller triggered the grip button here as well
-	// maybe it would be a better idea to somehow store the buttons each controller presses in the CmdVRTracker struct?
-	// not sure how i would figure out what controller pressed that button though, because both controllers can press it aaaa
-	if ( GetRightHand() )
-	{
-		controllerOrigin = GetRightHand()->GetAbsOrigin();
-		UTIL_TraceHull( controllerOrigin, controllerOrigin, -boxSize, boxSize, useableContents, this, COLLISION_GROUP_NONE, &tr );
-		if (tr.m_pEnt)
-			return tr.m_pEnt;
-	}
-
-	if ( GetLeftHand() )
-	{
-		controllerOrigin = GetLeftHand()->GetAbsOrigin();
-		UTIL_TraceHull( controllerOrigin, controllerOrigin, -boxSize, boxSize, useableContents, this, COLLISION_GROUP_NONE, &tr );
-		if (tr.m_pEnt)
-			return tr.m_pEnt;
-	}
-#endif
 
 	return NULL;
 }

@@ -21,22 +21,109 @@ extern ConVar vr_scale;
 
 ConVar vr_fov_override( "vr_fov_override", "0", FCVAR_CLIENTDLL );
 ConVar vr_disable_eye_ang( "vr_disable_eye_ang", "0", FCVAR_CLIENTDLL );
+ConVar vr_cl_interp( "vr_interp_player", "0.1", FCVAR_CLIENTDLL );
 
 #if defined( CVRBasePlayer )
 	#undef CVRBasePlayer	
 #endif
 
-IMPLEMENT_CLIENTCLASS_DT( C_VRBasePlayer, DT_VRBasePlayer, CVRBasePlayer )
-END_RECV_TABLE()
+
+// stub it, not like this code is used in asw anyway
+#if ENGINE_ASW
+#define VEC_RAD2DEG(x) x
+#endif
+
 
 BEGIN_PREDICTION_DATA( C_VRBasePlayer )
+	// DEFINE_PRED_ARRAY( m_VRTrackers, FIELD_EHANDLE, MAX_VR_TRACKERS, FTYPEDESC_INSENDTABLE ),
 END_PREDICTION_DATA()
+
+IMPLEMENT_CLIENTCLASS( C_VRBasePlayer, DT_VRBasePlayer, CVRBasePlayer )
+// 	RecvPropArray3( RECVINFO_ARRAY( m_VRTrackers ), RecvPropEHandle (RECVINFO(m_VRTrackers[0])) ),
+// END_RECV_TABLE()
+
+BEGIN_RECV_TABLE(C_VRBasePlayer, DT_VRBasePlayer)
+	// RecvPropArray3( RECVINFO_ARRAY(m_VRTrackers), RecvPropEHandle( RECVINFO( m_VRTrackers[0] ) ) ),
+END_RECV_TABLE()
+
 
 extern CMoveData* g_pMoveData;
 
 // iojsadiu9fj
 ConVar cl_meathook_neck_pivot_ingame_up( "cl_meathook_neck_pivot_ingame_up", "7.0" );
 ConVar cl_meathook_neck_pivot_ingame_fwd( "cl_meathook_neck_pivot_ingame_fwd", "3.0" );
+
+
+
+CVRBoneInfo::CVRBoneInfo( C_VRBasePlayer* pPlayer, CStudioHdr* hdr, const char* boneName )
+{
+	name = boneName;
+	index = pPlayer->LookupBone( name );
+	studioBone = hdr->pBone( index );
+
+	InitShared( pPlayer, hdr );
+}
+
+
+CVRBoneInfo::CVRBoneInfo( C_VRBasePlayer* pPlayer, CStudioHdr* hdr, int boneIndex )
+{
+	studioBone = hdr->pBone( boneIndex );
+	name = studioBone->pszName();
+	index = boneIndex;
+
+	InitShared( pPlayer, hdr );
+}
+
+
+void CVRBoneInfo::InitShared( C_VRBasePlayer* pPlayer, CStudioHdr* hdr )
+{
+	ply = pPlayer;
+	parentIndex = hdr->boneParent( index );
+
+	if ( parentIndex != -1 )
+	{
+		const mstudiobone_t* parentStudioBone = hdr->pBone( parentIndex );
+		parentName = parentStudioBone->pszName();
+
+		dist = DotProduct( parentStudioBone->pos, studioBone->pos );
+
+		WorldToLocal( pPlayer->GetBoneForWrite(index), pPlayer->GetBoneForWrite(parentIndex), m_relPos, m_relAng );
+	}
+	else
+	{
+		parentName = "";
+		m_relPos.Init();
+		m_relAng.Init();
+	}
+
+	hasNewAngles = false;
+	newAngles.Init();
+}
+
+
+bool CVRBoneInfo::HasCustomAngles()
+{
+	return hasNewAngles;
+}
+
+
+void CVRBoneInfo::SetCustomAngles( QAngle angles )
+{
+	hasNewAngles = true;
+	newAngles = angles;
+}
+
+
+matrix3x4_t& CVRBoneInfo::GetBoneForWrite()
+{
+	return ply->GetBoneForWrite( index );
+}
+
+matrix3x4_t& CVRBoneInfo::GetParentBoneForWrite()
+{
+	return ply->GetBoneForWrite( parentIndex );
+}
+
 
 
 //-----------------------------------------------------------------------------
@@ -50,8 +137,14 @@ ConVar cl_meathook_neck_pivot_ingame_fwd( "cl_meathook_neck_pivot_ingame_fwd", "
 //-----------------------------------------------------------------------------
 // Constructor
 //-----------------------------------------------------------------------------
-C_VRBasePlayer::C_VRBasePlayer()
+C_VRBasePlayer::C_VRBasePlayer():
+	m_originHistory("C_VRBasePlayer::m_originHistory"),
+	m_anglesHistory("C_VRBasePlayer::m_anglesHistory")
 {
+	m_predOrigin.Init();
+	m_predAngles.Init();
+	m_originHistory.Setup( &m_predOrigin, INTERPOLATE_LINEAR_ONLY );
+	m_anglesHistory.Setup( &m_predAngles, INTERPOLATE_LINEAR_ONLY );
 }
 
 //-----------------------------------------------------------------------------
@@ -81,7 +174,7 @@ float C_VRBasePlayer::GetFOV()
 		if ( vr_fov_override.GetInt() <= 0 )
 		{
 			VRViewParams viewParams = g_VR.GetViewParams();
-			return viewParams.horizontalFOVLeft;
+			return viewParams.left.hFOV;
 		}
 		else
 		{
@@ -98,14 +191,19 @@ float C_VRBasePlayer::GetFOV()
 // this is stupid
 Vector C_VRBasePlayer::EyePosition()
 {
-	if ( g_VR.active && !vr_disable_eye_ang.GetBool() )
+	if ( m_bInVR /*&& !vr_disable_eye_ang.GetBool()*/ )
 	{
-		VRHostTracker* headset = g_VR.GetTrackerByName("hmd");
-		if ( headset == NULL )
+		CVRTracker* hmd = GetHeadset();
+		if ( hmd == NULL )
 			return BaseClass::EyePosition();
 
 		Vector basePos = GetAbsOrigin();
-		basePos.z += headset->pos.z;
+		basePos.z += hmd->m_pos.z;
+
+		// Vector hmdPos;
+		// VectorYawRotate(hmd->pos, viewOffset, hmdPos);
+
+		// basePos += hmdPos;
 		return basePos;
 	}
 	else
@@ -117,13 +215,13 @@ Vector C_VRBasePlayer::EyePosition()
 
 const QAngle &C_VRBasePlayer::EyeAnglesNoOffset()
 {
-	if ( g_VR.active && !vr_disable_eye_ang.GetBool() )
+	if ( m_bInVR )
 	{
-		VRHostTracker* headset = g_VR.GetTrackerByName("hmd");
+		CVRTracker* headset = GetHeadset();
 		if ( headset == NULL )
 			return BaseClass::EyeAngles();
 
-		return headset->ang;
+		return headset->m_ang;
 	}
 	else
 	{
@@ -134,8 +232,7 @@ const QAngle &C_VRBasePlayer::EyeAnglesNoOffset()
 
 const QAngle &C_VRBasePlayer::EyeAngles()
 {
-	// get the headset view angles, fix if needed, and return
-	if ( g_VR.active && !vr_disable_eye_ang.GetBool() )
+	if ( m_bInVR )
 	{
 		return m_vrViewAngles;
 	}
@@ -148,17 +245,17 @@ const QAngle &C_VRBasePlayer::EyeAngles()
 
 const QAngle &C_VRBasePlayer::LocalEyeAngles()
 {
-	// get the headset view angles, fix if needed, and return
-	if ( g_VR.active && !vr_disable_eye_ang.GetBool() )
+	// this is never called wtf
+	if ( m_bInVR )
 	{
-		VRHostTracker* headset = g_VR.GetTrackerByName("hmd");
+		CVRTracker* headset = GetHeadset();
 		if ( headset == NULL )
 			return BaseClass::LocalEyeAngles();
 
-		// QAngle eyeAngles( headset->ang );
+		// QAngle eyeAngles( headset->m_ang );
 		// eyeAngles.y += viewOffset;
 		// return eyeAngles;
-		return headset->ang;
+		return headset->m_ang;
 	}
 	else
 	{
@@ -180,22 +277,31 @@ bool C_VRBasePlayer::CreateMove( float flInputSampleTime, CUserCmd *pCmd )
 	CVRInput* vr_input = (CVRInput*)input;
 	vr_input->VRMove( flInputSampleTime, pCmd );
 
-	/*if ( g_VR.active && ret )
-	{
-		VRTracker* hmd = g_VR.GetTrackerByName("hmd");
-		if ( hmd != NULL )
-		{
-			pCmd->roomScaleMove = hmd->pos * vr_scale.GetFloat();
-		}
-	}*/
-
 	return ret;
 }
 
 
 void C_VRBasePlayer::ClientThink()
 {
-	HandleVRMoveData();
+	m_prevTrackerCount = m_trackerCount;
+	m_trackerCount = 0;
+
+	PredictCoordinates();
+}
+
+
+void C_VRBasePlayer::PredictCoordinates()
+{
+	float interp = vr_cl_interp.GetFloat();
+
+	m_predOrigin = GetAbsOrigin();
+	m_predAngles = GetAbsAngles();
+
+	m_originHistory.NoteChanged( gpGlobals->curtime, gpGlobals->curtime, interp, false );
+	m_originHistory.Interpolate( gpGlobals->curtime, interp );
+
+	m_anglesHistory.NoteChanged( gpGlobals->curtime, gpGlobals->curtime, interp, false );
+	m_anglesHistory.Interpolate( gpGlobals->curtime, interp );
 }
 
 
@@ -239,87 +345,117 @@ void C_VRBasePlayer::CorrectViewRotateOffset()
 }
 
 
-/*void C_VRBasePlayer::HandleVRMoveData()
-{
-	BaseClass::HandleVRMoveData();
-
-	m_bInVR = g_pMoveData->vr_active;
-
-	// TODO: delete the trackers
-	if ( !m_bInVR )
-		return;
-
-	for (int i = 0; i < g_pMoveData->vr_trackers.Count(); i++)
-	{
-		CmdVRTracker cmdTracker = g_pMoveData->vr_trackers[i];
-		C_VRTracker* tracker = GetTracker(cmdTracker.name);
-		if ( tracker )
-		{
-			tracker->UpdateTracker(cmdTracker);
-		}
-		else
-		{
-			CreateTracker(cmdTracker);
-		}
-
-		if ( V_strcmp(tracker->m_trackerName, "pose_lefthand") == 0 )
-		{
-			m_BoneFollowerManager.AddBoneFollower( tracker, "ValveBiped.Bip01_L_Hand" );
-		}
-		
-		else if ( V_strcmp(tracker->m_trackerName, "pose_righthand") == 0 )
-		{
-			m_BoneFollowerManager.AddBoneFollower( tracker, "ValveBiped.Bip01_R_Hand" );
-		}
-	}
-}
-
-
-C_VRTracker* C_VRBasePlayer::GetTracker( const char* name )
-{
-	if ( !m_bInVR )
-		return NULL;
-
-	for (int i = 0; i < m_VRTrackers.Count(); i++)
-	{
-		C_VRTracker* tracker = m_VRTrackers[i];
-		if ( V_strcmp(tracker->m_trackerName, name) == 0 )
-			return tracker;
-	}
-
-	return NULL;
-}
-
-
-C_VRTracker* C_VRBasePlayer::CreateTracker( CmdVRTracker& cmdTracker )
-{
-	if ( !m_bInVR )
-		return NULL;
-
-	C_VRTracker* tracker;
-	if ( V_strcmp(cmdTracker.name, "pose_lefthand") == 0 || V_strcmp(cmdTracker.name, "pose_righthand") == 0 )
-	{
-		tracker = (C_VRTracker*)CreateEntityByName("vr_controller");
-	}
-	else
-	{
-		tracker = (C_VRTracker*)CreateEntityByName("vr_tracker");
-	}
-
-	tracker->InitializeAsClientEntity("", false);
-	tracker->UpdateTracker(cmdTracker);
-
-	m_VRTrackers.AddToTail(tracker);
-}*/
-
-
 // ------------------------------------------------------------------------------------------------
 // Playermodel controlling
 // ------------------------------------------------------------------------------------------------
 void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed )
 {
 	BaseClass::BuildTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed );
-	BuildFirstPersonMeathookTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, "ValveBiped.Bip01_Head1" );
+
+	if( !m_bInVR )
+		return;
+
+	UpdateBoneInformation( hdr );
+
+	m_BoneAccessor.SetWritableBones( BONE_USED_BY_ANYTHING );
+
+	for (int i = 0; i < m_VRTrackers.Count(); i++)
+	{
+		CVRTracker* pTracker = m_VRTrackers[i];
+
+		if ( !pTracker->m_bInit )
+			continue;
+
+		if (pTracker->IsHeadset())
+		{
+			// BuildFirstPersonMeathookTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, "ValveBiped.Bip01_Head1" );
+		}
+		else
+		{
+			BuildTrackerTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, pTracker );
+
+			if (pTracker->IsHand())
+			{
+				// TODO: handle other positions
+				BuildFingerTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, (CVRController*)pTracker );
+			}
+		}
+	}
+
+	// Apply all transformations
+	for (int i = 0; i < m_boneInfoList.Count(); i++)
+	{
+		CVRBoneInfo* boneInfo = m_boneInfoList[i];
+
+		if ( !boneInfo->HasCustomAngles() )
+			continue;
+
+		matrix3x4_t &bone = boneInfo->GetBoneForWrite();
+
+		Vector tmpPos;
+		MatrixGetColumn( bone, 3, tmpPos );
+		AngleMatrix( boneInfo->newAngles, tmpPos, bone );
+
+		matrix3x4_t &parentBone = boneInfo->GetParentBoneForWrite();
+
+		LocalToWorld( bone, boneInfo->m_relPos, boneInfo->newAngles, bone );
+
+		Vector parentPos;
+		MatrixGetColumn( parentBone, 3, parentPos );
+	}
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: Update the calculated bone positions and saved bones
+//          if the model is changed
+//-----------------------------------------------------------------------------
+void C_VRBasePlayer::UpdateBoneInformation( CStudioHdr *hdr )
+{
+	if ( hdr == m_prevModel || m_prevTrackerCount == m_VRTrackers.Count() )
+		return;
+
+	m_boneMainInfoList.Purge();
+	m_boneInfoList.PurgeAndDeleteElements();
+
+	m_prevModel = hdr;
+
+	for (int i = 0; i < m_VRTrackers.Count(); i++)
+	{
+		CVRTracker* pTracker = m_VRTrackers[i];
+
+		if ( pTracker == NULL || !pTracker->m_bInit )
+			continue;
+
+		CVRBoneInfo* boneInfo = new CVRBoneInfo( this, hdr, pTracker->GetRootBoneName() );
+		RecurseFindBones( hdr, boneInfo );
+		m_boneMainInfoList.AddToTail( boneInfo );
+		m_boneOrder.AddToTail( boneInfo->index );  // uhh
+	}
+}
+
+
+// probably so god damn inefficient
+void C_VRBasePlayer::RecurseFindBones( CStudioHdr *hdr, CVRBoneInfo* boneInfo )
+{
+	m_boneInfoList.AddToTail( boneInfo );
+
+	matrix3x4a_t bone = GetBone( boneInfo->index );
+
+	// actually be stupid and go through all the bones to see if one has a parent set to this bone
+
+	for (int i = 0; i < hdr->numbones(); i++)
+	{
+		int iBoneParent = hdr->boneParent(i);
+
+		if ( iBoneParent != boneInfo->index )
+			continue;
+
+		CVRBoneInfo* childBoneInfo = new CVRBoneInfo( this, hdr, i );
+		RecurseFindBones( hdr, childBoneInfo );
+		boneInfo->childBones.AddToTail( childBoneInfo );
+		m_boneOrder.AddToTail( i );  // uhh
+	}
 }
 
 
@@ -330,35 +466,6 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 void C_VRBasePlayer::BuildFirstPersonMeathookTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed, const char *pchHeadBoneName )
 {
 #if ENGINE_CSGO || ENGINE_2013 || ENGINE_TF2
-	// Handle meathook mode. If we aren't rendering, just use last frame's transforms
-	// if ( !InFirstPersonView() )
-	// 	return;
-
-	// If we're in third-person view, don't do anything special.
-	// If we're in first-person view rendering the main view and using the viewmodel, we shouldn't have even got here!
-	// If we're in first-person view rendering the main view(s), meathook and headless.
-	// If we're in first-person view rendering shadowbuffers/reflections, don't do anything special either (we could do meathook but with a head?)
-	// if ( IsAboutToRagdoll() )
-	// {
-		// We're re-animating specifically to set up the ragdoll.
-		// Meathook can push the player through the floor, which makes the ragdoll fall through the world, which is no good.
-		// So do nothing.
-		// 	return;
-		// }
-
-	// if ( !DrawingMainView() )
-	// {
-	// 	return;
-	// }
-
-	// If we aren't drawing the player anyway, don't mess with the bones. This can happen in Portal.
-	// if( !ShouldDrawThisPlayer() )
-	// {
-	// 	return;
-	// }
-
-	m_BoneAccessor.SetWritableBones( BONE_USED_BY_ANYTHING );
-
 	int iHead = LookupBone( pchHeadBoneName );
 	if ( iHead == -1 )
 	{
@@ -378,34 +485,23 @@ void C_VRBasePlayer::BuildFirstPersonMeathookTransformations( CStudioHdr *hdr, V
 	// the whole body so that the animated head is in the right place to match the player-controlled head.
 	Vector vHeadUp;
 	Vector vRealPivotPoint;
-	if( m_bInVR )
-	{
-		VMatrix mWorldFromMideye;
-		mWorldFromMideye.SetupMatrixOrgAngles( EyePosition(), EyeAngles() );
 
-		// What we do here is:
-		// * Take the required eye pos+orn - the actual pose the player is controlling with the HMD.
-		// * Go downwards in that space by cl_meathook_neck_pivot_ingame_* - this is now the neck-pivot in the game world of where the player is actually looking.
-		// * Now place the body of the animated character so that the head bone is at that position.
-		// The head bone is the neck pivot point of the in-game character.
+	VMatrix mWorldFromMideye;
+	mWorldFromMideye.SetupMatrixOrgAngles( EyePosition(), EyeAngles() );
 
-		Vector vRealMidEyePos = mWorldFromMideye.GetTranslation();
-		vRealPivotPoint = vRealMidEyePos - ( mWorldFromMideye.GetUp() * cl_meathook_neck_pivot_ingame_up.GetFloat() ) - ( mWorldFromMideye.GetForward() * cl_meathook_neck_pivot_ingame_fwd.GetFloat() );
-	}
-	else
-	{
-		// figure out where to put the body from the aim angles
-		Vector vForward, vRight, vUp;
-		AngleVectors( GetAbsAngles(), &vForward, &vRight, &vUp );
+	// What we do here is:
+	// * Take the required eye pos+orn - the actual pose the player is controlling with the HMD.
+	// * Go downwards in that space by cl_meathook_neck_pivot_ingame_* - this is now the neck-pivot in the game world of where the player is actually looking.
+	// * Now place the body of the animated character so that the head bone is at that position.
+	// The head bone is the neck pivot point of the in-game character.
 
-		vRealPivotPoint = GetAbsOrigin() - ( vUp * cl_meathook_neck_pivot_ingame_up.GetFloat() ) - ( vForward * cl_meathook_neck_pivot_ingame_fwd.GetFloat() );		
-	}
+	Vector vRealMidEyePos = mWorldFromMideye.GetTranslation();
+	vRealPivotPoint = vRealMidEyePos - ( mWorldFromMideye.GetUp() * cl_meathook_neck_pivot_ingame_up.GetFloat() ) - ( mWorldFromMideye.GetForward() * cl_meathook_neck_pivot_ingame_fwd.GetFloat() );
 
 	Vector vDeltaToAdd = vRealPivotPoint - vHeadTransformTranslation;
 
-
 	// Now add this offset to the entire skeleton.
-	for (int i = 0; i < hdr->numbones(); i++)
+	/*for (int i = 0; i < hdr->numbones(); i++)
 	{
 		// Only update bones reference by the bone mask.
 		if ( !( hdr->boneFlags( i ) & boneMask ) )
@@ -417,29 +513,337 @@ void C_VRBasePlayer::BuildFirstPersonMeathookTransformations( CStudioHdr *hdr, V
 		MatrixGetTranslation ( bone, vBonePos );
 		vBonePos += vDeltaToAdd;
 		MatrixSetTranslation ( vBonePos, bone );
-	}
+	}*/
 
 	// Then scale the head to zero, but leave its position - forms a "neck stub".
 	// This prevents us rendering junk all over the screen, e.g. inside of mouth, etc.
-	MatrixScaleByZero( mHeadTransform );
-
-	// TODO: right now we nuke the hats by shrinking them to nothing,
-	// but it feels like we should do something more sensible.
-	// For example, for one sniper taunt he takes his hat off and waves it - would be nice to see it then.
-	int iHelm = LookupBone( "prp_helmet" );
-	if ( iHelm != -1 )
+	if ( IsLocalPlayer() )
 	{
-		// Scale the helmet.
-		matrix3x4_t  &transformhelmet = GetBoneForWrite( iHelm );
-		MatrixScaleByZero( transformhelmet );
+		MatrixScaleByZero( mHeadTransform );
 	}
 
-	iHelm = LookupBone( "prp_hat" );
-	if ( iHelm != -1 )
+#endif
+}
+
+
+
+// retard
+const char* g_sArmBones[]
+{
+	"Clavicle",
+	"Uppearm",
+	"Forearm",
+	"Hand",
+	""
+};
+
+
+const char* g_sFingerBonesWorldModel[]
+{
+	""
+};
+
+
+const char* g_sLegBones[]
+{
+	"Thigh",
+	"Calf",
+	"Foot",
+	""
+};
+
+
+CVRBoneInfo* C_VRBasePlayer::GetBoneInfo( int index )
+{
+	for (int i = 0; i < m_boneInfoList.Count(); i++)
 	{
-		matrix3x4_t  &transformhelmet = GetBoneForWrite( iHelm );
-		MatrixScaleByZero( transformhelmet );
+		CVRBoneInfo* boneInfo = m_boneInfoList[i];
+		if ( boneInfo->index == index )
+			return boneInfo;
 	}
+
+	return NULL;
+}
+
+
+CVRBoneInfo* C_VRBasePlayer::GetMainBoneInfo( int index )
+{
+	for (int i = 0; i < m_boneMainInfoList.Count(); i++)
+	{
+		CVRBoneInfo* boneInfo = m_boneMainInfoList[i];
+		if ( boneInfo->index == index )
+			return boneInfo;
+	}
+
+	return NULL;
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: Have the position of the bone the tracker wants to be moved to where the tracker is
+//-----------------------------------------------------------------------------
+void C_VRBasePlayer::BuildTrackerTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed, CVRTracker* pTracker )
+{
+#if ENGINE_CSGO || ENGINE_2013 || ENGINE_TF2
+	int iMainBone = LookupBone( pTracker->GetBoneName() );
+	if ( iMainBone == -1 )
+	{
+		return;
+	}
+
+	int iRootBone = LookupBone( pTracker->GetRootBoneName() );
+	if ( iRootBone == -1 )
+	{
+		return;
+	}
+
+	matrix3x4_t &mainBone = GetBoneForWrite( iMainBone );
+	matrix3x4_t &parentEndBone = GetBoneForWrite( iRootBone );
+
+	AngleMatrix( pTracker->GetAbsAngles(), pTracker->GetAbsOrigin(), mainBone );
+	
+	// for now, just have the bone be where the tracker position is
+	/*Vector vBonePos;
+	MatrixGetTranslation( mainBone, vBonePos );
+	vBonePos = pTracker->GetAbsOrigin();
+	MatrixSetTranslation( vBonePos, mainBone );*/
+
+	CVRBoneInfo* rootBoneInfo = GetBoneInfo( iRootBone );
+
+	if ( !rootBoneInfo )
+	{
+		return;
+	}
+
+	if ( pTracker->IsHand() )
+	{
+		BuildArmTransform( hdr, pTracker, rootBoneInfo );
+	}
+
+	/*for (int i = 0; i < hdr->numbones(); i++)
+	{
+		rootBoneInfo->childBones;
+	}*/
+
+	// adjust other bones
+	/*for (int i = 0; i < hdr->numbones(); i++)
+	{
+		// Only update bones reference by the bone mask.
+		if ( !( hdr->boneFlags( i ) & boneMask ) )
+		{
+			continue;
+		}
+
+		matrix3x4a_t mainBone = GetBone( i );
+		
+
+		// somehow rotate the matrix to point toward the ?
+	}*/
+
+#endif
+}
+
+
+void RotateAroundAxisForward( QAngle& angle, float degrees )
+{
+	Vector forward;
+	AngleVectors( angle, &forward );
+
+	Vector rotate;
+	VectorYawRotate( forward, degrees, rotate );
+
+	VectorAngles( rotate, angle );
+}
+
+
+void RotateAroundAxisUp( QAngle& angle, float degrees )
+{
+	Vector direction;
+	AngleVectors( angle, NULL, NULL, &direction );
+
+	Vector rotate;
+	VectorYawRotate( direction, degrees, rotate );
+
+	VectorAngles( rotate, angle );
+}
+
+
+void RotateAroundAxis( QAngle& angle, Vector direction, float degrees )
+{
+	Vector rotate;
+	VectorYawRotate( direction, degrees, rotate );
+
+	VectorAngles( rotate, angle );
+}
+
+
+// copied from gmod vr lol
+void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, CVRBoneInfo* clavicleBoneInfo )
+{
+	Vector plyRight;
+	AngleVectors( GetAbsAngles(), NULL, &plyRight, NULL );
+
+	matrix3x4_t &clavicleBone = GetBoneForWrite( clavicleBoneInfo->index );
+
+	Vector vClaviclePos;
+	MatrixGetColumn( clavicleBone, 3, vClaviclePos );
+
+	// -------------------------------------
+	// calc target angle for clavicle
+
+	Vector tmp1 = vClaviclePos + plyRight *- clavicleBoneInfo->dist;
+	Vector tmp2 = tmp1 + (pTracker->GetAbsOrigin() - tmp1) * 0.15;  // desired shoulder position
+
+	QAngle clavicleTargetAng;
+
+	if ( !IsInAVehicle() )
+	{
+		VectorAngles( (tmp2 - vClaviclePos), clavicleTargetAng );
+	}
+	else
+	{
+	}
+
+	RotateAroundAxisForward( clavicleTargetAng, 90 );
+	AngleMatrix( clavicleTargetAng, vClaviclePos, clavicleBone );
+
+	// -------------------------------------
+
+	Vector forward;
+	AngleVectors( clavicleTargetAng, &forward );
+	Vector vUpperarmPos = vClaviclePos + forward * clavicleBoneInfo->dist;
+
+	Vector vTargetVec = pTracker->GetAbsOrigin() - vUpperarmPos;
+
+	QAngle targetVecAng, targetVecAngLocal;
+	if ( !IsInAVehicle() )
+	{
+		VectorAngles( vTargetVec, targetVecAng );
+	}
+	else
+	{
+	}
+
+	QAngle upperarmTargetAng(targetVecAng);
+
+	QAngle tmp;
+	if ( !IsInAVehicle() )
+	{
+		// 2nd argument is something calculated value in gmod vr
+		tmp.Init(targetVecAng.x, pTracker->GetAbsAngles().y, -90);
+	}
+	else
+	{
+	}
+
+	// --------------------------
+	// WorldToLocal
+
+	/*Vector tAng;
+
+	VMatrix worldMatrix; // , tmpMatrix, tmpMatrix2;
+	worldMatrix.SetupMatrixOrgAngles( GetAbsOrigin(), GetAbsAngles() );
+	// tmpMatrix.SetupMatrixOrgAngles( vec3_origin, tmp );
+	// tmpMatrix2.SetupMatrixOrgAngles( vec3_origin, targetVecAng );
+
+
+	// WorldToLocal
+	Vector localOrigin = worldMatrix.VMul4x3Transpose( vec3_origin );*/
+
+	Vector testPos;
+	QAngle testAngle;
+	WorldToLocal( vec3_origin, tmp, vec3_origin, targetVecAng, testPos, testAngle );
+
+	float degrees = testAngle.z;
+	RotateAroundAxisForward( upperarmTargetAng, degrees );
+
+	// uh
+	CVRBoneInfo* infoUpperArm = NULL;
+	CVRBoneInfo* infoLowerArm = NULL;
+
+	if ( pTracker->IsLeftHand() )
+	{
+		infoUpperArm = GetBoneInfo( LookupBone("ValveBiped.Bip01_L_UpperArm") );
+		infoLowerArm = GetBoneInfo( LookupBone("ValveBiped.Bip01_L_Forearm") );
+	}
+	else
+	{
+		infoUpperArm = GetBoneInfo( LookupBone("ValveBiped.Bip01_R_UpperArm") );
+		infoLowerArm = GetBoneInfo( LookupBone("ValveBiped.Bip01_R_Forearm") );
+	}
+
+	float tmpCosValue = (Sqr(infoUpperArm->dist) + vTargetVec.LengthSqr() - Sqr(infoLowerArm->dist)) / (2 * infoUpperArm->dist * vTargetVec.Length());
+	float finalRotationValue = VEC_RAD2DEG( acos(tmpCosValue) );
+	RotateAroundAxisUp( upperarmTargetAng, finalRotationValue );
+
+	// vehicle check
+	float zTest = ((pTracker->GetAbsOrigin().z - (vUpperarmPos.z)) + 20) *1.5;
+
+	if ( zTest < 0 )
+		zTest = 0;
+
+	if ( pTracker->IsLeftHand() )
+		zTest = (30 + zTest);
+	else
+		zTest = -(30 + zTest);
+
+	RotateAroundAxis( upperarmTargetAng, pTracker->GetAbsOrigin().Normalized(), zTest );
+
+	infoUpperArm->SetCustomAngles( upperarmTargetAng );
+
+
+	QAngle forearmTargetAng(upperarmTargetAng);
+
+	float tmpCosValueLower = (Sqr(infoLowerArm->dist) + vTargetVec.LengthSqr() - Sqr(infoUpperArm->dist)) / (2 * infoLowerArm->dist * vTargetVec.Length());
+	float finalLowerRotationValue = 180 - finalRotationValue - VEC_RAD2DEG( acos(tmpCosValueLower) );
+
+
+	infoLowerArm->SetCustomAngles( upperarmTargetAng );
+
+	// WorldToLocalRotation
+	// Vector localOrigin = worldMatrix.VMul3x3( vec3_origin );
+
+	// I have the axes of local space in world space. (childMatrix)
+	// I want to compute those world space axes in the parent's local space
+	// and set that transform (as angles) on the child's object so the net
+	// result is that the child is now in parent space, but still oriented the same way
+	/*VMatrix tmp = matrix.Transpose(); // world->parent
+	tmp.MatrixMul( childMatrix, matrix ); // child->parent
+	QAngle angles;
+	MatrixToAngles( matrix, angles );*/
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: Control the finger positions of the hand
+//-----------------------------------------------------------------------------
+void C_VRBasePlayer::BuildFingerTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed, CVRController* pTracker )
+{
+#if ENGINE_CSGO || ENGINE_2013 || ENGINE_TF2
+	/*int iHand = LookupBone( pTracker->GetBoneName() );
+	if ( iHand == -1 )
+	{
+		return;
+	}
+
+	matrix3x4_t &mHandTransform = GetBoneForWrite( iHand );
+
+	const char* fingerBoneNames[FINGER_BONE_COUNT];  // is this right?
+	pTracker->GetFingerBoneNames( fingerBoneNames );
+
+	int iFingerBones[FINGER_BONE_COUNT];
+	for (int i = 0; i < FINGER_BONE_COUNT; i++)
+	{
+		if ( fingerBoneNames[i] == NULL )
+		{
+			iFingerBones[i] = -1;
+			continue;
+		}
+
+		// models could have less or even no finger bones
+		iFingerBones[i] = LookupBone( fingerBoneNames[i] );
+	}*/
+
 #endif
 }
 

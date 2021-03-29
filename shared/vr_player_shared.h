@@ -7,16 +7,19 @@
 #ifdef CLIENT_DLL
 #include "c_baseplayer.h"
 #include "vr.h"
-#define CVRTracker C_VRTracker
-#define CVRController C_VRController
+// #define CVRTracker C_VRTracker
+// #define CVRController C_VRController
 #else
 #include "player.h"
 #include "physics_bone_follower.h"
 #endif
 
-// #include "vr_tracker.h"
+#include "vr_tracker.h"
 class CVRTracker;
 class CVRController;
+
+// #define MAX_VR_TRACKERS (int)EVRTracker::COUNT
+#define MAX_VR_TRACKERS 6
 
 // #include "c_hl2_playerlocaldata.h"
 // #include "vr_game_movement.h"
@@ -26,25 +29,34 @@ class CVRBasePlayerShared : public CBasePlayer
 {
 public:
 	DECLARE_CLASS( CVRBasePlayerShared, CBasePlayer );
-	// DECLARE_PREDICTABLE();
+	DECLARE_PREDICTABLE();
+	DECLARE_NETWORKCLASS();
+
+#if !defined( CLIENT_DLL )
+	DECLARE_DATADESC();
+#endif
 
 	virtual void                    Spawn();
 
 #ifdef GAME_DLL
 	virtual bool                    CreateVPhysics();
 	void                            InitBoneFollowers();
+	virtual void                    SetTransmit( CCheckTransmitInfo *pInfo, bool bAlways );
 #endif
 
-	virtual void                    VRThink();
+	virtual void                    PreThink();
 
 	virtual void                    HandleVRMoveData();
+	virtual void                    UpdateTrackers();
 
 	CVRTracker*                     CreateTracker(CmdVRTracker& cmdTracker);
-	CVRTracker*                     GetTracker(const char* name);
+	CVRTracker*                     GetTracker( EVRTracker type );
+	CVRTracker*                     GetTracker( short index );
+	// CVRTracker*                     GetTracker( const char* name );
 
-	inline CVRTracker*              GetHeadset()    { return GetTracker("hmd"); }
-	inline CVRController*           GetLeftHand()   { return (CVRController*)GetTracker("pose_lefthand"); }
-	inline CVRController*           GetRightHand()  { return (CVRController*)GetTracker("pose_righthand"); }
+	inline CVRTracker*              GetHeadset()    { return GetTracker( EVRTracker::HMD ); }
+	inline CVRController*           GetLeftHand()   { return (CVRController*)GetTracker( EVRTracker::LHAND ); }
+	inline CVRController*           GetRightHand()  { return (CVRController*)GetTracker( EVRTracker::RHAND ); }
 
 	virtual CBaseEntity*            FindUseEntity();
 
@@ -53,12 +65,16 @@ public:
 	// ------------------------------------------------------------------------------------------------
 
 #ifdef GAME_DLL
-	CBoneFollowerManager	m_BoneFollowerManager;
+	// CBoneFollowerManager	m_BoneFollowerManager;
 #endif
 
-	CUtlVector< CVRTracker* > m_VRTrackers;
+	// CNetworkArray( CHandle<CVRTracker>, m_VRTrackers, MAX_VR_TRACKERS );
+	CUtlVector<CVRTracker*> m_VRTrackers;
+
+	// CNetworkVar( bool, m_bInVR );
 	bool m_bInVR;
 
+	// network this? only used on the client at the moment
 	QAngle m_vrViewAngles;
 
 friend class CVRGameMovement;
