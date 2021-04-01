@@ -1,6 +1,5 @@
 #include "cbase.h"
 
-#include "vr_openvr.h"
 #include "vr_util.h"
 #include "vr.h"
 
@@ -763,7 +762,7 @@ void OVR_GetPoses( CUtlVector< VRHostTracker* > &trackers )
         }
         else if (strcmp(g_OVR_actions[i].type, "pose") == 0)
         {
-            g_pOVRInput->GetPoseActionDataRelativeToNow(g_OVR_actions[i].handle, vr::TrackingUniverseStanding, 0, &poseActionData, sizeof(poseActionData), vr::k_ulInvalidInputValueHandle);
+            g_pOVRInput->GetPoseActionDataForNextFrame(g_OVR_actions[i].handle, vr::TrackingUniverseStanding, &poseActionData, sizeof(poseActionData), vr::k_ulInvalidInputValueHandle);
             pose = poseActionData.pose;
             strcpy_s(poseName, MAX_STR_LEN, g_OVR_actions[i].name);
         }
@@ -781,13 +780,8 @@ void OVR_GetPoses( CUtlVector< VRHostTracker* > &trackers )
 
             tracker->mat = OpenVRToSourceCoordinateSystem( VMatrixFrom34( mat.m ) );
 
-            tracker->pos.x = tracker->mat[0][3];
-            tracker->pos.y = tracker->mat[1][3];
-            tracker->pos.z = tracker->mat[2][3];
-
-            tracker->ang.x = asin(mat.m[1][2]) * (180.0 / 3.141592654);
-            tracker->ang.y = atan2f(mat.m[0][2], mat.m[2][2]) * (180.0 / 3.141592654);
-            tracker->ang.z = atan2f(-mat.m[1][0], mat.m[1][1]) * (180.0 / 3.141592654);
+            MatrixGetColumn( tracker->mat.As3x4(), 3, tracker->pos );
+            MatrixToAngles( tracker->mat, tracker->ang );
 
             tracker->vel.x = -pose.vVelocity.v[2];
             tracker->vel.y = -pose.vVelocity.v[0];
