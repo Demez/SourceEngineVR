@@ -335,7 +335,7 @@ void VRSystem::UpdateViewParams()
     uint32_t height = 0;
     g_pOVR->GetRecommendedRenderTargetSize(&width, &height);
 
-    if ( vr_clamp_res.GetBool() && !IsDX11() )
+    if ( vr_clamp_res.GetBool() )
     {
         int scrWidth, scrHeight;
         vgui::surface()->GetScreenSize( scrWidth, scrHeight );
