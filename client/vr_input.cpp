@@ -340,14 +340,11 @@ void CVRInput::VRMove( float frametime, CUserCmd *cmd )
 	VRHostTracker* hmd = g_VR.GetTrackerByName("hmd");
 
 	float viewAngleOffset = 0.0;
-	if ( !vr_disable_eye_ang.GetBool() )
+	VRVector2Action* turning = (VRVector2Action*)g_VR.GetActionByName( "vector2_smoothturn" );
+	if ( turning != NULL )
 	{
-		VRVector2Action* turning = (VRVector2Action*)g_VR.GetActionByName( "vector2_smoothturn" );
-		if ( turning != NULL )
-		{
-			viewAngleOffset = -turning->x * vr_turn_speed.GetFloat();
-			pPlayer->AddViewRotateOffset( viewAngleOffset );
-		}
+		viewAngleOffset = -turning->x * vr_turn_speed.GetFloat();
+		pPlayer->AddViewRotateOffset( viewAngleOffset );
 	}
 
 	if ( hmd != NULL )
