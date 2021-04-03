@@ -36,6 +36,7 @@
 
 ConVar vr_autostart("vr_autostart", "0", FCVAR_ARCHIVE, "auto start vr on level load");
 ConVar vr_active_hack("vr_active_hack", "0", FCVAR_CLIENTDLL, "lazy hack for anything that needs to know if vr is enabled outside of the game dlls (mouse lock)");
+ConVar vr_clamp_res("vr_clamp_res", "1", FCVAR_CLIENTDLL, "clamp the resolution to the screen size until the render clamping issue is figured out");
 
 
 #define MAX_STR_LEN 4096
@@ -231,7 +232,6 @@ void VRSystem::LevelInitPostEntity()
 	if ( vr_autostart.GetBool() )
     {
         Enable();
-        inputsystem->DisableMouseCapture();
     }
 }
 
@@ -333,6 +333,30 @@ void VRSystem::UpdateViewParams()
     uint32_t width = 0;
     uint32_t height = 0;
     g_pOVR->GetRecommendedRenderTargetSize(&width, &height);
+
+    if ( vr_clamp_res.GetBool() && !IsDX11() )
+    {
+        int scrWidth, scrHeight;
+        vgui::surface()->GetScreenSize( scrWidth, scrHeight );
+
+        // maybe figure out this math later
+        if ( scrWidth < width || scrHeight < height )
+        {
+            // rs > ri ? (wi * hs/hi, hs) : (ws, hi * ws/wi)
+
+            float widthRatio = (float)scrWidth / (float)width;
+            float heightRatio = (float)scrHeight / (float)height;
+            float bestRatio = MIN(widthRatio, heightRatio);
+
+            height *= bestRatio;
+            width *= bestRatio;
+
+            if ( width % 2 != 0 )
+            {
+                width += 1;
+            }
+        }
+    }
 
     viewParams.rtWidth = width;
     viewParams.rtHeight = height;
@@ -739,6 +763,7 @@ void OVR_UpdatePosesAndActions()
     g_pOVRInput->UpdateActionState( g_OVR_activeActionSets, sizeof(vr::VRActiveActionSet_t), g_OVR_activeActionSetCount );
 }
 
+
 // ========================================================================
 // dumped into g_VR.m_currentTrackers
 // ========================================================================
@@ -750,8 +775,6 @@ void OVR_GetPoses( CUtlVector< VRHostTracker* > &trackers )
 
     for (int i = -1; i < g_OVR_actionCount; i++)
     {
-        // select a pose
-        // why is this false on all of them? ffs, whatever
         poseActionData.pose.bPoseIsValid = 0;
         pose.bPoseIsValid = 0;
 
@@ -815,7 +838,6 @@ void OVR_GetActions( CUtlVector< VRBaseAction* > &actions )
 
         // this is probably pretty slow and stupid
         // allocating memory and freeing it every frame
-        // just for something this simple
 
         if (strcmp(g_OVR_actions[i].type, "boolean") == 0)
         {
