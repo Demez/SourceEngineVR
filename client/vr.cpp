@@ -13,6 +13,7 @@
 #include "rendertexture.h"
 #include "materialsystem/itexture.h"
 #include "inputsystem/iinputsystem.h"
+#include "tier0/ICommandLine.h"
 
 #include "view.h"
 #include "viewrender.h"
@@ -470,6 +471,18 @@ bool VRSystem::Disable()
 }
 
 
+bool VRSystem::IsDX11()
+{
+#if ENGINE_QUIVER
+    // static ConVarRef mat_dxlevel( "mat_dxlevel" );
+    // return mat_dxlevel.GetInt() == 110;
+    return CommandLine()->FindParm( "-dx11" );
+#else
+    return false;
+#endif
+}
+
+
 bool VRSystem::NeedD3DInit()
 {
 	return (g_OVRDX.d3d9Device == NULL);
@@ -522,21 +535,34 @@ void VRSystem::SubmitInternal( void* submitData, vr::EVREye eye, vr::VRTextureBo
 {
 	vr::Texture_t vrTexture;
 
-	IDirect3DQuery9* pEventQuery = nullptr;
-	g_OVRDX.d3d9Device->CreateQuery(D3DQUERYTYPE_EVENT, &pEventQuery);
+    if ( IsDX11() )
+    {
+        vrTexture = {
+            (ID3D11Texture2D*)submitData,
+            vr::TextureType_DirectX,
+            vr::ColorSpace_Auto
+        };
+    }
+    else
+    {
+#if !ENGINE_ASW
+	    IDirect3DQuery9* pEventQuery = nullptr;
+	    g_OVRDX.d3d9Device->CreateQuery(D3DQUERYTYPE_EVENT, &pEventQuery);
 
-	if (pEventQuery != nullptr)
-	{
-		pEventQuery->Issue(D3DISSUE_END);
-		while (pEventQuery->GetData(nullptr, 0, D3DGETDATA_FLUSH) != S_OK);
-		pEventQuery->Release();
-	}
+	    if (pEventQuery != nullptr)
+	    {
+		    pEventQuery->Issue(D3DISSUE_END);
+		    while (pEventQuery->GetData(nullptr, 0, D3DGETDATA_FLUSH) != S_OK);
+		    pEventQuery->Release();
+	    }
+#endif
 
-	vrTexture = {
-		eye == vr::EVREye::Eye_Left ? g_OVRDX.d3d11TextureL : g_OVRDX.d3d11TextureR,
-		vr::TextureType_DirectX,
-		vr::ColorSpace_Auto
-	};
+	    vrTexture = {
+		    eye == vr::EVREye::Eye_Left ? g_OVRDX.d3d11TextureL : g_OVRDX.d3d11TextureR,
+		    vr::TextureType_DirectX,
+		    vr::ColorSpace_Auto
+	    };
+    }
 
 	vr::EVRCompositorError error = vr::VRCompositor()->Submit( eye, &vrTexture, &textureBounds );
 

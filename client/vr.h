@@ -177,6 +177,7 @@ public:
 	void                        SetupFOVOffset();
 	void                        GetFOVOffset( VREye eye, int &hFov, float &hOffset, float &vOffset, float &aspectRatio );
 
+	bool                        IsDX11();
 	bool                        NeedD3DInit();
 
 	void                        Submit( ITexture* rtEye, VREye eye );
