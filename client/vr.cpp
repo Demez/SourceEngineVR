@@ -147,7 +147,7 @@ const char* VRSystem::GetTrackingPropString( vr::ETrackedDeviceProperty prop, ui
     if ( capacity > 1 )
     {
         char value[256];
-        g_pOVR->GetStringTrackedDeviceProperty( vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_TrackingSystemName_String, value, 256, &error );
+        g_pOVR->GetStringTrackedDeviceProperty( vr::k_unTrackedDeviceIndex_Hmd, prop, value, 256, &error );
         return value;
     }
 
