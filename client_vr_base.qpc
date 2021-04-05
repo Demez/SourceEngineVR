@@ -61,6 +61,8 @@ files
 		
 		"$VR_CL_DIR/vr.cpp"
 		"$VR_CL_DIR/vr.h"
+		"$VR_CL_DIR/vr_internal.cpp"
+		"$VR_CL_DIR/vr_internal.h"
 		"$VR_CL_DIR/vr_viewrender.cpp"
 		"$VR_CL_DIR/vr_viewrender.h"
 		"$VR_CL_DIR/vr_cl_player.cpp"

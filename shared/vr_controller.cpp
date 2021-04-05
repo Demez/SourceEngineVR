@@ -7,6 +7,7 @@
 #include "in_buttons.h"
 #include "vr_player_shared.h"
 #include "vphysics_interface.h"
+#include "debugoverlay_shared.h"
 
 
 ConVar vr_dbg_pickup("vr_dbg_pickup", "0", FCVAR_REPLICATED);
@@ -325,7 +326,7 @@ Vector CVRController::GetPalmDir()
 	AngleVectors(GetAbsAngles(), NULL, &palmDir, NULL);
 	VectorNormalize(palmDir);
 
-	if ( m_bIsRightHand )
+	if ( IsRightHand() )
 		palmDir *= -1;  // flip it so it's actually where your palm is facing on the left hand
 
 	return palmDir;

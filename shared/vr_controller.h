@@ -32,18 +32,9 @@ struct vr_shadowcontrol_params_t : public hlshadowcontrol_params_t
 // These trackers are used for the hands only, they allow you to pickup physics props (or more in the future)
 class CVRController: public CVRTracker, public IMotionEvent
 {
-	// DECLARE_CLASS( CVRController, CVRTracker )
 	typedef CVRTracker BaseClass;
 
 public:
-
-/*#ifdef CLIENT_DLL
-    DECLARE_CLIENTCLASS();
-#else
-    DECLARE_SERVERCLASS();
-#endif
-
-    DECLARE_PREDICTABLE();*/
 
 	virtual void                Spawn();
 
@@ -86,9 +77,7 @@ public:
 	//---------------------------------------------------------------
 	CBaseEntity*                m_pLastUseEntity;
 	CBaseEntity*                m_pGrabbedObject;
-	// CNetworkHandle( CBaseEntity, m_pGrabbedObject );
 
-	bool                        m_bIsRightHand;
 	Vector2D                    m_fingerCurls[5];
 
 	IPhysicsMotionController*   m_pController;
@@ -100,10 +89,6 @@ public:
 
 	Vector                      m_entLocalPos;
 	QAngle                      m_entLocalAng;
-	// matrix3x4_t                 m_entCoord;
-
-	// CNetworkVector( m_entLocalPos );
-	// CNetworkQAngle( m_entLocalAng );
 };
 
 

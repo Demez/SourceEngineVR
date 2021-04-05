@@ -101,13 +101,13 @@ void CVRGameMovement::ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMoveBas
 	if ( pMove->vr_active )
 	{
 		// this does nothing lmao
-		pMove->m_vecVelocity.x += pMove->vr_originOffset.x;
+		/*pMove->m_vecVelocity.x += pMove->vr_originOffset.x;
 		pMove->m_vecVelocity.y += pMove->vr_originOffset.y;
 
 		Vector absVelocity = pPlayer->GetAbsVelocity();
 		absVelocity.x += pMove->vr_originOffset.x;
 		absVelocity.y += pMove->vr_originOffset.y;
-		pPlayer->SetAbsVelocity( absVelocity );
+		pPlayer->SetAbsVelocity( absVelocity );*/
 
 		/*Vector forward, right, up;
 

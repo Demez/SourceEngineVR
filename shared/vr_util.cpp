@@ -219,6 +219,7 @@ void WorldToLocal( const VMatrix &worldCoord, const VMatrix& objectCoord, Vector
 }
 
 
+// change to GetRelCoord()?
 void WorldToLocal( const matrix3x4_t& worldCoord, const matrix3x4_t& objectCoord, Vector& outPos, QAngle& outAng )
 {
 	WorldToLocal( VMatrix(worldCoord), VMatrix(objectCoord), outPos, outAng );

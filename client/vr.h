@@ -26,24 +26,12 @@ struct VRHostTracker
 };
 
 
-struct VREyeViewParams
-{
-	int hFOV;
-	float hOffset;
-	float vOffset;
-	Vector eyeToHeadTransformPos;
-};
-
-
 struct VRViewParams
 {
-	VREyeViewParams left;
-	VREyeViewParams right;
-
-	float aspectRatio;
-
-	int rtWidth = 512;
-	int rtHeight = 512;
+	int width = 512;
+	int height = 512;
+	float fov = 0;
+	float aspect = 0.0;
 };
 
 
@@ -148,10 +136,9 @@ public:
 	VMatrix                     GetMidEyeFromEye( VREye eEye );
 
 	// ========================================
-	// OpenVR Handling Stuff
+	// convenience functions
 	// ========================================
 
-	// convenience functions
 	inline bool                 IsHMDPresent()          { return vr::VR_IsHmdPresent(); }
 
 	inline VRHostTracker*       GetHeadset()            { return GetTrackerByName("hmd"); }
@@ -161,13 +148,41 @@ public:
 	inline VRSkeletonAction*    GetLeftHandSkeleton()   { return (VRSkeletonAction*)GetActionByName("skeleton_lefthand"); }
 	inline VRSkeletonAction*    GetRightHandSkeleton()  { return (VRSkeletonAction*)GetActionByName("skeleton_righthand"); }
 
+	// ========================================
+	// Information
+	// ========================================
+
+	/*
+	public string hmd_TrackingSystemName { get { return GetStringProperty(ETrackedDeviceProperty.Prop_TrackingSystemName_String); } }
+    public string hmd_ModelNumber { get { return GetStringProperty(ETrackedDeviceProperty.Prop_ModelNumber_String); } }
+    public string hmd_SerialNumber { get { return GetStringProperty(ETrackedDeviceProperty.Prop_SerialNumber_String); } }
+    public string hmd_Type { get { return GetStringProperty(ETrackedDeviceProperty.Prop_ControllerType_String); } }
+
+    public float hmd_SecondsFromVsyncToPhotons { get { return GetFloatProperty(ETrackedDeviceProperty.Prop_SecondsFromVsyncToPhotons_Float); } }
+    public float hmd_DisplayFrequency { get { return GetFloatProperty(ETrackedDeviceProperty.Prop_DisplayFrequency_Float); } }
+	*/
+
+	const char*                 GetTrackingPropString( vr::ETrackedDeviceProperty prop, uint deviceId = vr::k_unTrackedDeviceIndex_Hmd );
+
+	const char*                 GetHeadsetTrackingSystemName();
+	const char*                 GetHeadsetModelNumber();
+	const char*                 GetHeadsetSerialNumber();
+	const char*                 GetHeadsetType();
+
+	float                       GetHeadsetSecondsFromVsyncToPhotons();
+	float                       GetHeadsetDisplayFrequency();
+
+	// ========================================
+	// OpenVR Handling Stuff
+	// ========================================
+
 	VRHostTracker*              GetTrackerByName( const char* name );
 	VRBaseAction*               GetActionByName( const char* name );
 
-	void                        UpdateBaseViewParams();
 	void                        UpdateViewParams();
 	VRViewParams                GetViewParams();
-	VREyeViewParams             GetEyeViewParams( VREye eye );
+
+	void                        SetSeatedMode( bool seated );
 
 	void                        UpdateTrackers();
 	void                        UpdateActions();
@@ -175,16 +190,17 @@ public:
 	bool                        Enable();
 	bool                        Disable();
 	void                        SetupFOVOffset();
-	void                        GetFOVOffset( VREye eye, int &hFov, float &hOffset, float &vOffset, float &aspectRatio );
+	void                        GetFOVOffset( VREye eye, float &aspectRatio, float &hFov );
 
 	bool                        IsDX11();
 	bool                        NeedD3DInit();
+	void                        DX9EXToDX11( void* leftEyeData, void* rightEyeData );
+	void                        InitDX9Device( void* deviceData );
 
 	void                        Submit( ITexture* rtEye, VREye eye );
 	void                        Submit( ITexture* leftEye, ITexture* rightEye );
 
 private:
-	void                        SubmitInternal( void* submitData, vr::EVREye eye, vr::VRTextureBounds_t &textureBounds );
 
 public:
 	bool active;
@@ -194,6 +210,8 @@ public:
 	CUtlVector< VRHostTracker* > m_currentTrackers;
 	CUtlVector< VRBaseAction* > m_currentActions;
 	// CUtlVector< VRBaseAction* > previousActions;
+
+	bool m_seatedMode;
 };
 
 extern VRSystem g_VR;

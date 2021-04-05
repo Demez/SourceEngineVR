@@ -29,8 +29,6 @@ ConVar vr_back_speed("vr_back_speed", "450", FCVAR_CLIENTDLL);
 ConVar vr_turn_speed("vr_turn_speed", "1.5", FCVAR_CLIENTDLL);
 // ConVar vr_turn_snap("vr_turn_snap", "0", FCVAR_CLIENTDLL);
 
-extern ConVar vr_scale_old;
-
 /*
 ConVar cl_sidespeed( "cl_sidespeed", "450", FCVAR_CHEAT );
 ConVar cl_upspeed( "cl_upspeed", "320", FCVAR_CHEAT );
@@ -360,18 +358,6 @@ void CVRInput::VRMove( float frametime, CUserCmd *cmd )
 		finalPos.z = 0;
 
 		cmd->vr_originOffset = finalPos;
-
-		// try using SmoothCurve()?
-
-		// bad
-		QAngle rawAng = hmd->ang;
-		hmd->ang = Lerp(vr_smooth_amount.GetFloat(), m_hmdPrevAngles, hmd->ang);
-		// hmd->ang.Normalize();
-
-		// WriteTrackerToCmd( cmd, hmd );
-
-		// m_hmdPrevAngles = rawAng;
-		m_hmdPrevAngles = hmd->ang;
 	}
 
 	cmd->vr_viewRotation = pPlayer->viewOffset;
@@ -380,9 +366,6 @@ void CVRInput::VRMove( float frametime, CUserCmd *cmd )
 	{
 		WriteTrackerToCmd( cmd, g_VR.m_currentTrackers[i] );
 	}
-
-	// WriteTrackerToCmd( cmd, g_VR.GetLeftController() );
-	// WriteTrackerToCmd( cmd, g_VR.GetRightController() );
 
 	WriteFingerCurlsToCmd( cmd, g_VR.GetLeftHandSkeleton(), false );
 	WriteFingerCurlsToCmd( cmd, g_VR.GetRightHandSkeleton(), true );
@@ -449,6 +432,7 @@ int CVRInput::GetButtonBits( bool bResetState )
 // ====================================================================================================
 // minor changes
 // ====================================================================================================
+#if 0
 void CVRInput::AccumulateMouse( int nSlot )
 {
 	if ( !g_VR.active || vr_allow_mouse.GetBool() )
@@ -464,16 +448,34 @@ void CVRInput::AccumulateMouse()
 {
 	AccumulateMouse( 0 );
 }
+#endif
 
 
-void CVRInput::AdjustAngles( int nSlot, float frametime )
+void CVRInput::VRHeadsetAngles( float frametime )
 {
 	if ( !g_VR.active )
-		return BaseClass::AdjustAngles( nSlot, frametime );
+		return;
 
 	C_VRBasePlayer *pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
 	QAngle viewAngles = pPlayer->EyeAngles();
 	engine->SetViewAngles( viewAngles );
 }
 
+#if ENGINE_NEW
+void CVRInput::AdjustAngles( int nSlot, float frametime )
+{
+	if ( !g_VR.active )
+		return BaseClass::AdjustAngles( nSlot, frametime );
+
+	VRHeadsetAngles( frametime );
+}
+#else
+void CVRInput::AdjustAngles( float frametime )
+{
+	if ( !g_VR.active )
+		return BaseClass::AdjustAngles( frametime );
+
+	VRHeadsetAngles( frametime );
+}
+#endif
 

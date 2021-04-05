@@ -31,14 +31,11 @@ IMPLEMENT_NETWORKCLASS( CVRBasePlayerShared, DT_VRBasePlayerShared )
 #ifdef CLIENT_DLL
 
 BEGIN_PREDICTION_DATA( CVRBasePlayerShared )
-	// DEFINE_PRED_ARRAY( m_VRTrackers, FIELD_EHANDLE, MAX_VR_TRACKERS, FTYPEDESC_INSENDTABLE ),
 END_PREDICTION_DATA()
 
 #else
 
 BEGIN_DATADESC( CVRBasePlayerShared )
-	// DEFINE_ARRAY( m_VRTrackers, FIELD_EHANDLE, MAX_VR_TRACKERS ),
-	// DEFINE_AUTO_ARRAY( m_VRTrackers, FIELD_EHANDLE ),
 END_DATADESC()
 
 #endif
@@ -46,9 +43,7 @@ END_DATADESC()
 
 BEGIN_NETWORK_TABLE( CVRBasePlayerShared, DT_VRBasePlayerShared )
 #ifdef CLIENT_DLL
-	// RecvPropArray3( RECVINFO_ARRAY(m_VRTrackers), RecvPropEHandle( RECVINFO( m_VRTrackers[0] ) ) ),
 #else
-	// SendPropArray3( SENDINFO_ARRAY3(m_VRTrackers), SendPropEHandle( SENDINFO_ARRAY(m_VRTrackers) ) ),
 #endif
 END_NETWORK_TABLE()
 
@@ -56,13 +51,6 @@ END_NETWORK_TABLE()
 void CVRBasePlayerShared::Spawn()
 {
 	BaseClass::Spawn();
-
-#if 0 // def GAME_DLL
-	for (int i = 0; i < MAX_VR_TRACKERS; i++)
-	{
-		m_VRTrackers.Set( i, INVALID_EHANDLE );
-	}
-#endif
 }
 
 
@@ -116,17 +104,13 @@ void CVRBasePlayerShared::PreThink()
 
 void CVRBasePlayerShared::HandleVRMoveData()
 {
-#if ENGINE_ASW
-	m_bInVR = false;
-#else
 	m_bInVR = GetVRMoveData()->vr_active;
-#endif
 
 	// TODO: delete the trackers
 	if ( !m_bInVR )
 		return;
 
-	// call moved to vr_gamemovement.cpp for prediction
+	// call moved to vr_gamemovement.cpp for prediction (bad idea actually?)
 	// UpdateTrackers();
 }
 

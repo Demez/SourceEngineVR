@@ -23,8 +23,10 @@ struct CVRBoneInfo
 
 	void InitShared( C_VRBasePlayer* pPlayer, CStudioHdr* hdr );
 
+	void CalcRelativeCoord();
 	bool HasCustomAngles();
 	void SetCustomAngles( QAngle angles );
+	QAngle GetAngles();
 
 	matrix3x4_t& GetBoneForWrite();
 	matrix3x4_t& GetParentBoneForWrite();
@@ -37,7 +39,9 @@ struct CVRBoneInfo
 
 	C_VRBasePlayer* ply;
 	float dist;  // distance to parent, dot product
+
 	const mstudiobone_t* studioBone;
+	const mstudiobone_t* parentStudioBone;
 
 	CUtlVector< CVRBoneInfo* > childBones;
 
@@ -86,6 +90,9 @@ public:
 	virtual void                    BuildFingerTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed, CVRController* pTracker );
 
 	//virtual void                    HandleRootBoneTransformations( CVRTracker* pTracker, CVRBoneInfo* rootBoneInfo );
+	virtual void                    RecurseApplyBoneTransforms( CVRBoneInfo* boneInfo );
+
+	virtual void                    SetupConstraints();
 
 	// ------------------------------------------------------------------------------------------------
 	// New VR Only Functions
@@ -95,12 +102,18 @@ public:
 	virtual void                    CorrectViewRotateOffset();
 	virtual const QAngle&           EyeAnglesNoOffset();
 
+	virtual CVRBoneInfo*            GetBoneInfo( CVRTracker* pTracker );
+	virtual CVRBoneInfo*            GetRootBoneInfo( CVRTracker* pTracker );
+
 	virtual CVRBoneInfo*            GetBoneInfo( int index );
-	virtual CVRBoneInfo*            GetMainBoneInfo( int index );  // less stuff to iterate through
+	virtual CVRBoneInfo*            GetRootBoneInfo( int index );  // less stuff to iterate through
 
 	// ------------------------------------------------------------------------------------------------
 	// Other
 	// ------------------------------------------------------------------------------------------------
+	virtual void                    Spawn();
+	virtual CStudioHdr*             OnNewModel();
+
 	virtual void                    OnDataChanged( DataUpdateType_t updateType );
 	virtual void                    ExitLadder();
 
@@ -130,6 +143,9 @@ public:
 
 friend class CVRGameMovement;
 };
+
+
+C_VRBasePlayer* GetLocalVRPlayer();
 
 
 #define CVRBasePlayer C_VRBasePlayer

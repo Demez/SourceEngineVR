@@ -4,8 +4,6 @@
 #include "c_baseentity.h"
 #include "c_baseanimating.h"
 #define CBaseEntity C_BaseEntity
-// #define CVRTracker C_VRTracker
-// #define CVRController C_VRController
 #else
 #include "baseentity.h"
 #include "baseanimating.h"
@@ -38,19 +36,9 @@ EVRTracker      GetTrackerEnum( short index );
 
 
 // Each tracker is supposed to control bone positions, like the hand bone positions, or the hip, feet, or the head
-class CVRTracker // : public CBaseAnimating
+class CVRTracker
 {
-    // DECLARE_CLASS(CVRTracker, CBaseAnimating)
 public:
-    // DECLARE_NETWORKCLASS();
-
-/*#ifdef CLIENT_DLL
-    DECLARE_CLIENTCLASS();
-#else
-    DECLARE_SERVERCLASS();
-#endif
-
-    DECLARE_PREDICTABLE();*/
 
     CVRTracker();
 
@@ -59,31 +47,44 @@ public:
     virtual void                InitTracker( CmdVRTracker& cmdTracker, CVRBasePlayerShared* pPlayer );
     virtual void                UpdateTracker( CmdVRTracker& cmdTracker );
 
-    virtual bool                IsHeadset()     { return (m_type == EVRTracker::HMD); }
-    virtual bool                IsHand()        { return (m_type == EVRTracker::LHAND || m_type == EVRTracker::RHAND); }
-    virtual bool                IsFoot()        { return (m_type == EVRTracker::LFOOT || m_type == EVRTracker::RFOOT); }
-    virtual bool                IsHip()         { return (m_type == EVRTracker::HIP); }
+    //---------------------------------------------------------------
+    // convenience tracker type checks
+    //---------------------------------------------------------------
+    virtual inline bool         IsHeadset()     { return (m_type == EVRTracker::HMD); }
+    virtual inline bool         IsHand()        { return (m_type == EVRTracker::LHAND || m_type == EVRTracker::RHAND); }
+    virtual inline bool         IsFoot()        { return (m_type == EVRTracker::LFOOT || m_type == EVRTracker::RFOOT); }
+    virtual inline bool         IsHip()         { return (m_type == EVRTracker::HIP); }
 
-    virtual bool                IsLeftHand()    { return (m_type == EVRTracker::LHAND); }
-    virtual bool                IsRightHand()   { return (m_type == EVRTracker::RHAND); }
-    virtual bool                IsLeftFoot()    { return (m_type == EVRTracker::LFOOT); }
-    virtual bool                IsRightFoot()   { return (m_type == EVRTracker::RFOOT); }
+    virtual inline bool         IsLeftHand()    { return (m_type == EVRTracker::LHAND); }
+    virtual inline bool         IsRightHand()   { return (m_type == EVRTracker::RHAND); }
+    virtual inline bool         IsLeftFoot()    { return (m_type == EVRTracker::LFOOT); }
+    virtual inline bool         IsRightFoot()   { return (m_type == EVRTracker::RFOOT); }
+
+    //---------------------------------------------------------------
+    // other
+    //---------------------------------------------------------------
 
     virtual void                SetupBoneName();
-    virtual const char*         GetBoneName() { return m_boneName; }
-    virtual const char*         GetRootBoneName() { return m_boneRootName; }
+    virtual inline const char*  GetBoneName() { return m_boneName; }
+    virtual inline const char*  GetRootBoneName() { return m_boneRootName; }
 
+    //---------------------------------------------------------------
+    // position/angles
+    //---------------------------------------------------------------
     virtual matrix3x4_t         GetWorldCoordinate();
     virtual Vector              GetAbsOrigin();
     virtual QAngle              GetAbsAngles();
     virtual void                SetAbsOrigin( Vector pos );
     virtual void                SetAbsAngles( QAngle ang );
 
+    //---------------------------------------------------------------
+    // vars
+    //---------------------------------------------------------------
     bool                        m_bInit;
     CVRBasePlayerShared*        m_pPlayer;
+    EVRTracker                  m_type;
 
     const char*                 m_trackerName;
-
     const char*                 m_boneName;
     const char*                 m_boneRootName;
 
@@ -94,8 +95,5 @@ public:
     Vector                      m_absPos;
     QAngle                      m_absAng;
     matrix3x4_t                 m_absCoord;
-
-    // CNetworkVar( EVRTracker,    m_type );
-    EVRTracker                  m_type;
 };
 

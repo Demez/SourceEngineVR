@@ -3,6 +3,7 @@
 #include "vr_tracker.h"
 #include "hl2_shareddefs.h"  // TODO: move LINK_ENTITY_TO_CLASS_DUMB out of here
 #include "vr_gamemovement.h"
+#include "debugoverlay_shared.h"
 
 #include "vr_player_shared.h"
 
@@ -254,6 +255,8 @@ void CVRTracker::UpdateTracker(CmdVRTracker& cmdTracker)
 #ifdef CLIENT_DLL
     if ( !IsHeadset() )
         NDebugOverlay::Axis( GetAbsOrigin(), GetAbsAngles(), 5, false, 0.0f );
+
+    NDebugOverlay::Text( GetAbsOrigin(), m_trackerName, false, 0.0f );
 #endif
 
 }

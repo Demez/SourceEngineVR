@@ -28,7 +28,7 @@ class CUserCmd;
 // also you have to add the variables yourself since you can't inherit any classes with CUserCmd, sad
 void ReadUsercmdVR( bf_read *buf, CUserCmd *move, CUserCmd *from );
 
-#if ENGINE_NEW
+#if 1 // ENGINE_NEW
 void WriteUsercmdVR( bf_write *buf, const CUserCmd *to, const CUserCmd *from );
 #else
 void WriteUsercmdVR( bf_write *buf, CUserCmd *to, CUserCmd *from );

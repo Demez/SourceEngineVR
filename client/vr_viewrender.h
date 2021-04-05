@@ -29,7 +29,7 @@ public:
 	virtual void RenderView( const CViewSetup &view, int nClearFlags, int whatToDraw );
 	virtual void RenderView( const CViewSetup &view, const CViewSetup &hudView, int nClearFlags, int whatToDraw );
 
-	// virtual void RenderViewEye( const CViewSetup &view, int nClearFlags, int whatToDraw, ITexture* rt, ITexture* depth );
+	virtual void RenderViewEye( CMatRenderContextPtr &pRenderContext, const CViewSetup &view, int nClearFlags, ITexture* eyeTex, VREye eye );
 
 	virtual void PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &screenView, VREye eye );
 

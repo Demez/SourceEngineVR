@@ -80,7 +80,7 @@ static bool ReadUserCmdDeltaFloat( bf_write *buf, char *what, float from, float 
 //			*from - 
 // Output : static
 //-----------------------------------------------------------------------------
-#if ENGINE_NEW
+#if 1 // ENGINE_NEW
 void WriteUsercmdVR( bf_write *buf, const CUserCmd *to, const CUserCmd *from )
 #else
 void WriteUsercmdVR( bf_write *buf, CUserCmd *to, CUserCmd *from )
