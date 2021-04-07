@@ -70,6 +70,7 @@ public:
 	// other
 	//---------------------------------------------------------------
 	virtual Vector              GetPalmDir();
+	virtual Vector              GetPointDir();
 	virtual void                GetFingerBoneNames( const char* fingerBoneNames[FINGER_BONE_COUNT] );
 
 	//---------------------------------------------------------------

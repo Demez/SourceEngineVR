@@ -23,9 +23,15 @@ struct CVRBoneInfo
 
 	void InitShared( C_VRBasePlayer* pPlayer, CStudioHdr* hdr );
 
+	CVRBoneInfo* GetParent();
+
 	void CalcRelativeCoord();
 	bool HasCustomAngles();
 	void SetCustomAngles( QAngle angles );
+	void SetTargetPos( Vector pos );
+	void SetTargetCoord( matrix3x4_t coord );
+
+	matrix3x4_t GetCoord();
 	QAngle GetAngles();
 
 	matrix3x4_t& GetBoneForWrite();
@@ -47,6 +53,12 @@ struct CVRBoneInfo
 
 	bool hasNewAngles;
 	QAngle newAngles;
+
+	bool hasNewPos;
+	Vector newPos;
+
+	bool hasNewCoord;
+	matrix3x4_t newCoord;
 
 	// coordinates relative to the parent bone
 	Vector m_relPos;

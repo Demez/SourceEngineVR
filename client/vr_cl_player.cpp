@@ -96,7 +96,18 @@ void CVRBoneInfo::InitShared( C_VRBasePlayer* pPlayer, CStudioHdr* hdr )
 
 
 	hasNewAngles = false;
+	hasNewPos = false;
+	hasNewCoord = false;
 	newAngles.Init();
+}
+
+
+CVRBoneInfo* CVRBoneInfo::GetParent()
+{
+	if ( parentIndex == -1 )
+		return NULL;
+
+	return ply->GetBoneInfo( parentIndex );
 }
 
 
@@ -123,6 +134,20 @@ void CVRBoneInfo::SetCustomAngles( QAngle angles )
 }
 
 
+void CVRBoneInfo::SetTargetPos( Vector pos )
+{
+	hasNewPos = true;
+	newPos = pos;
+}
+
+
+void CVRBoneInfo::SetTargetCoord( matrix3x4_t coord )
+{
+	hasNewCoord = true;
+	newCoord = coord;
+}
+
+
 QAngle CVRBoneInfo::GetAngles()
 {
 	if ( hasNewAngles )
@@ -131,6 +156,15 @@ QAngle CVRBoneInfo::GetAngles()
 	QAngle angles;
 	MatrixAngles( GetBoneForWrite(), angles );
 	return angles;
+}
+
+
+matrix3x4_t CVRBoneInfo::GetCoord()
+{
+	if ( hasNewCoord )
+		return newCoord;
+
+	return GetBoneForWrite();
 }
 
 
@@ -435,19 +469,89 @@ void C_VRBasePlayer::SetupConstraints()
 // goes through each child of the bone and apply's transformations to that
 void C_VRBasePlayer::RecurseApplyBoneTransforms( CVRBoneInfo* boneInfo )
 {
-	matrix3x4_t &bone = boneInfo->GetBoneForWrite();
-	matrix3x4_t &parentBone = boneInfo->GetParentBoneForWrite();
+	// matrix3x4_t &bone = boneInfo->GetBoneForWrite();
+	// matrix3x4_t &parentBone = boneInfo->GetParentBoneForWrite();
 
-	matrix3x4_t matBoneToParent, matNewBoneCoord;
+	matrix3x4_t &boneWrite = boneInfo->GetBoneForWrite();
+	matrix3x4_t &parentBoneWrite = boneInfo->GetParentBoneForWrite();
+
+	if ( boneInfo->hasNewCoord )
+	{
+		matrix3x4_t newBone = boneInfo->newCoord;
+		matrix3x4_t newParentBone = boneInfo->GetParent()->GetCoord();
+
+
+
+		matrix3x4a_t worldToBone;
+		MatrixInvert( newParentBone, worldToBone );
+
+		matrix3x4a_t local;
+		ConcatTransforms_Aligned( worldToBone, newBone, local );
+
+		// uh
+		Vector bonePos;
+		QAngle localAngles;
+		MatrixAngles( local, localAngles );
+		// MatrixGetColumn( local, 3, bonePos );
+		MatrixGetColumn( local, 3, bonePos );
+
+		if ( boneInfo->hasNewAngles )
+		{
+			// not correct yet, and the tracker hand angles are rotating with the view offset?
+			// not good for this
+			AngleMatrix( boneInfo->m_relAng /*+ boneInfo->newAngles*/, bonePos, local );
+		}
+		else
+		{
+			AngleMatrix( localAngles + boneInfo->newAngles, bonePos, local );
+		}
+
+
+
+		/*matrix3x4_t matBoneToParent, matNewBoneCoord;
+		QAngle newAngles( boneInfo->m_relAng + localAngles + boneInfo->newAngles );
+		NormalizeAngles( newAngles );
+
+		AngleMatrix( newAngles, matBoneToParent );
+		MatrixSetColumn( boneInfo->m_relPos, 3, matBoneToParent );*/
+
+		ConcatTransforms( parentBoneWrite, local, boneWrite );
+
+
+
+		// matrix3x4_t tmpBoneCoord(boneWrite);
+		// LocalToWorld( tmpBoneCoord, bonePos, newAngle, boneWrite );
+
+		// AngleMatrix( newAngle, bonePos, boneWrite );
+		// MatrixCopy( local, boneWrite );
+	}
+	else
+	{
+		matrix3x4_t matBoneToParent, matNewBoneCoord;
+		QAngle newAngles(boneInfo->m_relAng + boneInfo->newAngles);
+		NormalizeAngles( newAngles );
+
+		AngleMatrix( newAngles, matBoneToParent );
+		MatrixSetColumn( boneInfo->m_relPos, 3, matBoneToParent );
+
+		ConcatTransforms( parentBoneWrite, matBoneToParent, boneWrite );
+	}
+
+	// MatrixAngles( local,)
+	// MatrixAngles( local, q[iBone], pos[iBone] );
+
+
+
+	/*matrix3x4_t matBoneToParent, matNewBoneCoord;
 	QAngle newAngles(boneInfo->m_relAng + boneInfo->newAngles);
 	NormalizeAngles( newAngles );
 
 	AngleMatrix( newAngles, matBoneToParent );
 	MatrixSetColumn( boneInfo->m_relPos, 3, matBoneToParent );
 
-	ConcatTransforms( parentBone, matBoneToParent, bone );
+	ConcatTransforms( parentBone, matBoneToParent, bone );*/
 
-	{
+	/*{
 		Vector bonePos;
 		QAngle boneAng;
 		MatrixGetColumn( bone, 3, bonePos );
@@ -455,7 +559,7 @@ void C_VRBasePlayer::RecurseApplyBoneTransforms( CVRBoneInfo* boneInfo )
 
 		// NDebugOverlay::Axis( bonePos, boneAng, 5, false, 0.0f );
 		// NDebugOverlay::Text( bonePos, boneInfo->name, false, 0.0f );
-	}
+	}*/
 
 	for (int i = 0; i < boneInfo->childBones.Count(); i++)
 	{
@@ -488,6 +592,12 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 
 	UpdateBoneInformation( hdr );
 
+	for (int i = 0; i < m_boneInfoList.Count(); i++)
+	{
+		CVRBoneInfo* boneInfo = m_boneInfoList[i];
+		boneInfo->CalcRelativeCoord();
+	}
+
 	m_BoneAccessor.SetWritableBones( BONE_USED_BY_ANYTHING );
 
 	for (int i = 0; i < m_VRTrackers.Count(); i++)
@@ -510,15 +620,9 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 
 			if (pTracker->IsHand())
 			{
-				BuildFingerTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, (CVRController*)pTracker );
+				// BuildFingerTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, (CVRController*)pTracker );
 			}
 		}
-	}
-
-	for (int i = 0; i < m_boneInfoList.Count(); i++)
-	{
-		CVRBoneInfo* boneInfo = m_boneInfoList[i];
-		boneInfo->CalcRelativeCoord();
 	}
 
 	for (int i = 0; i < m_VRTrackers.Count(); i++)
@@ -697,7 +801,7 @@ CVRBoneInfo* C_VRBasePlayer::GetRootBoneInfo( int index )
 //-----------------------------------------------------------------------------
 void C_VRBasePlayer::BuildTrackerTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed, CVRTracker* pTracker )
 {
-#if ENGINE_CSGO || ENGINE_2013 || ENGINE_TF2
+#if ENGINE_QUIVER || ENGINE_CSGO || ENGINE_2013 || ENGINE_TF2
 	int iMainBone = LookupBone( pTracker->GetBoneName() );
 	if ( iMainBone == -1 )
 	{
@@ -733,7 +837,60 @@ void C_VRBasePlayer::BuildTrackerTransformations( CStudioHdr *hdr, Vector *pos, 
 
 	if ( pTracker->IsHand() )
 	{
-		BuildArmTransform( hdr, pTracker, rootBoneInfo );
+		// BuildArmTransform( hdr, pTracker, rootBoneInfo );
+
+		CVRBoneInfo* upperArmInfo;
+		CVRBoneInfo* foreArmInfo;
+
+		if ( pTracker->IsLeftHand() )
+		{
+			upperArmInfo = GetBoneInfo( LookupBone( "ValveBiped.Bip01_L_UpperArm" ) );
+			foreArmInfo = GetBoneInfo( LookupBone( "ValveBiped.Bip01_L_Forearm" ) );
+		}
+		else
+		{
+			upperArmInfo = GetBoneInfo( LookupBone( "ValveBiped.Bip01_R_UpperArm" ) );
+			foreArmInfo = GetBoneInfo( LookupBone( "ValveBiped.Bip01_R_Forearm" ) );
+		}
+
+		matrix3x4a_t pBoneToWorld[3] = {
+			upperArmInfo->GetBoneForWrite(),
+			foreArmInfo->GetBoneForWrite(),
+			mainBoneInfo->GetBoneForWrite()
+		};
+
+		Vector targetHand;
+		bool hmm = Studio_SolveIK( 0, 1, 2, pTracker->GetAbsOrigin(), pBoneToWorld );
+
+		Vector plyRight;
+		AngleVectors( GetAbsAngles(), NULL, &plyRight, NULL );
+
+		VMatrix mat0(pBoneToWorld[0]);
+		VMatrix mat1(pBoneToWorld[1]);
+		VMatrix mat2(pBoneToWorld[2]);
+
+		/*MatrixBuildRotationAboutAxis( mat0, plyRight, 90 );
+		MatrixBuildRotationAboutAxis( mat1, plyRight, 90 );
+		MatrixBuildRotationAboutAxis( mat2, plyRight, 90 );
+
+		Vector tmp;
+		MatrixGetColumn( pBoneToWorld[0], 3, tmp );
+		MatrixSetColumn( tmp, 3, mat0.As3x4() );
+		MatrixGetColumn( pBoneToWorld[1], 3, tmp );
+		MatrixSetColumn( tmp, 3, mat1.As3x4() );
+		MatrixGetColumn( pBoneToWorld[2], 3, tmp );
+		MatrixSetColumn( tmp, 3, mat2.As3x4() );*/
+
+		upperArmInfo->SetTargetCoord( mat0.As3x4() );
+		foreArmInfo->SetTargetCoord( mat1.As3x4() );
+		mainBoneInfo->SetTargetCoord( mat2.As3x4() );
+
+
+		// MatrixCopy( pBoneToWorld[0], upperArmInfo->GetBoneForWrite() );
+		// MatrixCopy( pBoneToWorld[1], foreArmInfo->GetBoneForWrite() );
+		// MatrixCopy( pBoneToWorld[2], mainBoneInfo->GetBoneForWrite() );
+
+		// what now???
 	}
 
 	/*for (int i = 0; i < hdr->numbones(); i++)

@@ -466,6 +466,8 @@ void VRSystem::UpdateViewParams()
     g_VRInt.CalcTextureBounds( viewParams.aspect, viewParams.fov );
     GetFOVOffset( VREye::Left, viewParams.aspect, viewParams.fov );
 
+    viewParams.aspect = (float)viewParams.width / (float)viewParams.height;
+
 	m_currentViewParams = viewParams;
 }
 

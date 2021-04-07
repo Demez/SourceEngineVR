@@ -274,7 +274,8 @@ void CVRViewRender::PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &
 	if ( vr_eye_width.GetFloat() > 0 )
 		eyeView.width = vr_eye_width.GetFloat();
 
-	eyeView.m_flAspectRatio = eyeView.width / eyeView.height;
+	if ( vr_eye_width.GetFloat() > 0 || vr_eye_height.GetFloat() > 0 )
+		eyeView.m_flAspectRatio = (float)eyeView.width / (float)eyeView.height;
 }
 
 

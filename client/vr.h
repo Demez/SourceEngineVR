@@ -17,8 +17,7 @@ class ITexture;
 struct VRHostTracker
 {
 	const char* name;
-
-	VMatrix mat;        // converted to source's coordinate system
+	VMatrix mat;
 	Vector pos;
 	Vector vel;
 	QAngle ang;
@@ -43,7 +42,6 @@ enum class VRAction
 	Vector2,
 	Skeleton,
 };
-
 
 
 // kind of shit, oh well
@@ -76,12 +74,6 @@ typedef struct VRSkeletonAction: VRBaseAction {
 } VRSkeletonAction;
 
 
-
-// why?
-struct VRViewParams;
-struct OVRDX11;
-
-
 enum class VREye
 {
 	Left = 0,
@@ -96,19 +88,7 @@ enum class VRActionSet
 };
 
 
-// maybe use in the future?
-enum class VRInterface
-{
-	OPENVR = 0,
-	OPENXR
-};
-
-
 vr::EVREye      ToOVREye( VREye eye );
-
-// used in vr_viewrender.cpp still
-void            OVR_InitDX9Device( void* deviceData );
-void            OVR_DX9EXToDX11( void* leftEyeData, void* rightEyeData );
 
 extern vr::IVRSystem* g_pOVR;
 
@@ -153,11 +133,6 @@ public:
 	// ========================================
 
 	/*
-	public string hmd_TrackingSystemName { get { return GetStringProperty(ETrackedDeviceProperty.Prop_TrackingSystemName_String); } }
-    public string hmd_ModelNumber { get { return GetStringProperty(ETrackedDeviceProperty.Prop_ModelNumber_String); } }
-    public string hmd_SerialNumber { get { return GetStringProperty(ETrackedDeviceProperty.Prop_SerialNumber_String); } }
-    public string hmd_Type { get { return GetStringProperty(ETrackedDeviceProperty.Prop_ControllerType_String); } }
-
     public float hmd_SecondsFromVsyncToPhotons { get { return GetFloatProperty(ETrackedDeviceProperty.Prop_SecondsFromVsyncToPhotons_Float); } }
     public float hmd_DisplayFrequency { get { return GetFloatProperty(ETrackedDeviceProperty.Prop_DisplayFrequency_Float); } }
 	*/
@@ -176,21 +151,20 @@ public:
 	// OpenVR Handling Stuff
 	// ========================================
 
+	bool                        Enable();
+	bool                        Disable();
+
+	void                        UpdateTrackers();
+	void                        UpdateActions();
+
 	VRHostTracker*              GetTrackerByName( const char* name );
 	VRBaseAction*               GetActionByName( const char* name );
 
 	void                        UpdateViewParams();
 	VRViewParams                GetViewParams();
+	void                        GetFOVOffset( VREye eye, float &aspectRatio, float &hFov );
 
 	void                        SetSeatedMode( bool seated );
-
-	void                        UpdateTrackers();
-	void                        UpdateActions();
-
-	bool                        Enable();
-	bool                        Disable();
-	void                        SetupFOVOffset();
-	void                        GetFOVOffset( VREye eye, float &aspectRatio, float &hFov );
 
 	bool                        IsDX11();
 	bool                        NeedD3DInit();
@@ -200,11 +174,8 @@ public:
 	void                        Submit( ITexture* rtEye, VREye eye );
 	void                        Submit( ITexture* leftEye, ITexture* rightEye );
 
-private:
-
 public:
 	bool active;
-	VRViewParams m_baseViewParams;
 	VRViewParams m_currentViewParams;
 
 	CUtlVector< VRHostTracker* > m_currentTrackers;

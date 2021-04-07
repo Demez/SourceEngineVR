@@ -11,9 +11,14 @@
 
 
 ConVar vr_dbg_pickup("vr_dbg_pickup", "0", FCVAR_REPLICATED);
+ConVar vr_dbg_point("vr_dbg_point", "0", FCVAR_REPLICATED);
 
+ConVar vr_pickup_damp("vr_pickup_damp", "0.5", FCVAR_REPLICATED);
+ConVar vr_pickup_speed("vr_pickup_speed", "250", FCVAR_REPLICATED);
+ConVar vr_pickup_angular("vr_pickup_angular", "3600", FCVAR_REPLICATED);
+ConVar vr_pickup_damp_speed("vr_pickup_damp_speed", "500", FCVAR_REPLICATED);
+ConVar vr_pickup_damp_angular("vr_pickup_damp_angular", "3600", FCVAR_REPLICATED);
 
-// LINK_ENTITY_TO_CLASS_DUMB( vr_controller, CVRController ); // TEMP: make a separate CVRController class that uses CVRTracker
 
 extern CMoveData* g_pMoveData;
 
@@ -35,32 +40,6 @@ const float REDUCED_CARRY_MASS = 1.0f;
 const int PALM_DIR_MULT = 4;
 
 
-#if 0
-#ifdef CLIENT_DLL
-BEGIN_PREDICTION_DATA( CVRController )
-END_PREDICTION_DATA()
-
-#undef CVRController
-
-IMPLEMENT_CLIENTCLASS_DT( C_VRController, DT_VRController, CVRController )
-	RecvPropEHandle( RECVINFO( m_pGrabbedObject ) ),
-	RecvPropVector( RECVINFO( m_entLocalPos ) ),
-	RecvPropVector( RECVINFO( m_entLocalAng ) ),
-END_RECV_TABLE()
-
-#define CVRController C_VRController
-
-#else
-
-IMPLEMENT_SERVERCLASS_ST( CVRController, DT_VRController )
-	SendPropEHandle( SENDINFO( m_pGrabbedObject ) ),
-	SendPropVector( SENDINFO( m_entLocalPos ) ),
-	SendPropVector( SENDINFO( m_entLocalAng ) ),
-END_SEND_TABLE()
-#endif
-#endif
-
-
 void CVRController::Spawn()
 {
 	BaseClass::Spawn();
@@ -70,14 +49,6 @@ void CVRController::Spawn()
 
 	m_pLastUseEntity = NULL;
 	m_pGrabbedObject = NULL;
-
-	m_shadow.dampFactor = 1.0;
-	m_shadow.teleportDistance = 0;
-	// make this controller really stiff!
-	m_shadow.maxSpeed = 1000;
-	m_shadow.maxAngular = DEFAULT_MAX_ANGULAR;
-	m_shadow.maxDampSpeed = m_shadow.maxSpeed*2;
-	m_shadow.maxDampAngular = m_shadow.maxAngular;
 }
 
 
@@ -96,10 +67,26 @@ void CVRController::UpdateTracker( CmdVRTracker& cmdTracker )
 
 	DropObjectIfReleased();
 
-	if ( GetGrabbedObject() == NULL )
-		return;
+	m_shadow.dampFactor = vr_pickup_damp.GetFloat();  // 1.0f
+	m_shadow.teleportDistance = 0;
+	// make this controller really stiff!
+	m_shadow.maxSpeed = vr_pickup_speed.GetFloat();  // 1000
+	m_shadow.maxAngular = vr_pickup_angular.GetFloat();  // DEFAULT_MAX_ANGULAR;
+	m_shadow.maxDampSpeed = vr_pickup_damp_speed.GetFloat();  // m_shadow.maxSpeed*2;
+	m_shadow.maxDampAngular = vr_pickup_damp_angular.GetFloat();  // m_shadow.maxAngular;
 
-	UpdateObject();
+	if ( GetGrabbedObject() != NULL )
+	{
+		UpdateObject();
+	}
+
+	if ( vr_dbg_point.GetBool() )
+	{
+		Vector pointDir = GetPointDir();
+		// TODO: do this better, and probably lerp the angles so the pointDir is smoothed like in neos vr
+		// maybe make a beam for it?
+		NDebugOverlay::Line( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 16), 203, 66, 245, false, 0.0f );
+	}
 }
 
 
@@ -323,13 +310,26 @@ void CVRController::GrabObject( CBaseEntity* pEntity )
 Vector CVRController::GetPalmDir()
 {
 	Vector palmDir;
-	AngleVectors(GetAbsAngles(), NULL, &palmDir, NULL);
-	VectorNormalize(palmDir);
+	AngleVectors( GetAbsAngles(), NULL, &palmDir, NULL );
+	VectorNormalize( palmDir );
 
 	if ( IsRightHand() )
 		palmDir *= -1;  // flip it so it's actually where your palm is facing on the left hand
 
 	return palmDir;
+}
+
+
+Vector CVRController::GetPointDir()
+{
+	QAngle angles = GetAbsAngles();
+	// probably rotating forward?
+	// angles.y += 45.0;
+
+	Vector forward;
+	AngleVectors( angles, &forward );
+
+	return forward;
 }
 
 
