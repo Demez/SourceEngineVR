@@ -8,7 +8,7 @@
 // #include "sdk_weapon_parse.h"
 
 #if defined( CLIENT_DLL )
-	#define CVRBaseCombatWeapon C_VRBaseCombatWeapon
+	#define CVRBaseWeapon C_VRBaseWeapon
 	#define CVRBasePlayer C_VRBasePlayer
 #endif
 
@@ -43,14 +43,14 @@ typedef enum
 const char *WeaponIDToAlias( int id );
 
 // also make this a template?
-class CVRBaseCombatWeapon : public CBaseCombatWeapon
+class CVRBaseWeapon : public CBaseCombatWeapon
 {
 public:
-	DECLARE_CLASS( CVRBaseCombatWeapon, CBaseCombatWeapon );
+	DECLARE_CLASS( CVRBaseWeapon, CBaseCombatWeapon );
 	DECLARE_NETWORKCLASS(); 
 	DECLARE_PREDICTABLE();
 
-	CVRBaseCombatWeapon();
+	CVRBaseWeapon();
 
 	#ifdef GAME_DLL
 		DECLARE_DATADESC();
@@ -74,7 +74,7 @@ public:
 #endif
 
 private:
-	CVRBaseCombatWeapon( const CVRBaseCombatWeapon & );
+	CVRBaseWeapon( const CVRBaseWeapon & );
 };
 
 

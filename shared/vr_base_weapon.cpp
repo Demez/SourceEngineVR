@@ -58,16 +58,16 @@ const char *WeaponIDToAlias( int id )
 // CVRBaseCombatWeapon tables.
 // ----------------------------------------------------------------------------- //
 
-IMPLEMENT_NETWORKCLASS_ALIASED( VRBaseCombatWeapon, DT_VRBaseCombatWeapon )
+IMPLEMENT_NETWORKCLASS_ALIASED( VRBaseWeapon, DT_VRBaseCombatWeapon )
 
-BEGIN_NETWORK_TABLE( CVRBaseCombatWeapon, DT_VRBaseCombatWeapon )
+BEGIN_NETWORK_TABLE( CVRBaseWeapon, DT_VRBaseCombatWeapon )
 #ifdef CLIENT_DLL
 #else
 #endif
 END_NETWORK_TABLE()
 
 #ifdef CLIENT_DLL
-BEGIN_PREDICTION_DATA( CVRBaseCombatWeapon )
+BEGIN_PREDICTION_DATA( CVRBaseWeapon )
 	DEFINE_PRED_FIELD( m_flTimeWeaponIdle, FIELD_FLOAT, FTYPEDESC_OVERRIDE | FTYPEDESC_NOERRORCHECK ),
 END_PREDICTION_DATA()
 #endif
@@ -75,7 +75,7 @@ END_PREDICTION_DATA()
 
 #ifdef GAME_DLL
 
-	BEGIN_DATADESC( CVRBaseCombatWeapon )
+	BEGIN_DATADESC( CVRBaseWeapon )
 
 		// New weapon Think and Touch Functions go here..
 
@@ -86,29 +86,15 @@ END_PREDICTION_DATA()
 // ----------------------------------------------------------------------------- //
 // CWeaponCSBase implementation. 
 // ----------------------------------------------------------------------------- //
-CVRBaseCombatWeapon::CVRBaseCombatWeapon()
+CVRBaseWeapon::CVRBaseWeapon()
 {
 	SetPredictionEligible( true );
 
 	AddSolidFlags( FSOLID_TRIGGER ); // Nothing collides with these but it gets touches.
 }
 
-/*const CSDKWeaponInfo &CVRBaseCombatWeapon::GetSDKWpnData() const
-{
-	const FileWeaponInfo_t *pWeaponInfo = &GetWpnData();
-	const CSDKWeaponInfo *pSDKInfo;
 
-	#ifdef _DEBUG
-		pSDKInfo = dynamic_cast< const CSDKWeaponInfo* >( pWeaponInfo );
-		Assert( pSDKInfo );
-	#else
-		pSDKInfo = static_cast< const CSDKWeaponInfo* >( pWeaponInfo );
-	#endif
-
-	return *pSDKInfo;
-}*/
-
-bool CVRBaseCombatWeapon::PlayEmptySound()
+bool CVRBaseWeapon::PlayEmptySound()
 {
 	CPASAttenuationFilter filter( this );
 	filter.UsePredictionRules();
@@ -118,14 +104,16 @@ bool CVRBaseCombatWeapon::PlayEmptySound()
 	return 0;
 }
 
-CVRBasePlayer* CVRBaseCombatWeapon::GetPlayerOwner() const
+
+CVRBasePlayer* CVRBaseWeapon::GetPlayerOwner() const
 {
 	return dynamic_cast< CVRBasePlayer* >( GetOwner() );
 }
 
+
 #ifdef GAME_DLL
 
-void CVRBaseCombatWeapon::SendReloadEvents()
+void CVRBaseWeapon::SendReloadEvents()
 {
 	CVRBasePlayer *pPlayer = dynamic_cast< CVRBasePlayer* >( GetOwner() );
 	if ( !pPlayer )
@@ -144,3 +132,4 @@ void CVRBaseCombatWeapon::SendReloadEvents()
 }
 
 #endif
+
