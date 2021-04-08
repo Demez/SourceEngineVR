@@ -164,7 +164,7 @@ private:
 // right now we always can if use is held down, will setup later for when holding weapons in a new class
 bool CVRController::CanGrabEntities()
 {
-	return (g_pMoveData->m_nButtons & IN_USE);
+	return IsLeftHand() ? (g_pMoveData->m_nButtons & IN_PICKUP_LEFT) : (g_pMoveData->m_nButtons & IN_PICKUP_RIGHT);
 }
 
 
