@@ -318,9 +318,6 @@ void WriteFingerCurlsToCmd( CUserCmd *cmd, VRSkeletonAction* skeleton, bool righ
 }
 
 
-ConVar vr_smooth_amount("vr_smooth_amount", "1.0");
-
-
 // ====================================================================================================
 // handle all the vr inputs
 // ====================================================================================================
