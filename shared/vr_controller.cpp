@@ -9,6 +9,10 @@
 #include "vphysics_interface.h"
 #include "debugoverlay_shared.h"
 
+#ifdef CLIENT_DLL
+#include "beamdraw.h"
+#endif
+
 
 ConVar vr_dbg_pickup("vr_dbg_pickup", "0", FCVAR_REPLICATED);
 ConVar vr_dbg_point("vr_dbg_point", "1", FCVAR_REPLICATED);
@@ -40,6 +44,49 @@ const float REDUCED_CARRY_MASS = 1.0f;
 const int PALM_DIR_MULT = 4;
 
 
+/*
+P0 = start
+P1 = control
+P2 = end
+P(t) = (1-t)^2 * P0 + 2t(1-t)*P1 + t^2 * P2
+*/
+// This is just DrawBeamQuadratic, but using NDebugOverlay instead since it's not even drawing a beam
+// i could try CViewRenderBeams, but this works for now
+#ifdef CLIENT_DLL
+void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vector &end, float width, const Vector &color, float scrollOffset, float flHDRColorScale )
+{
+	int subdivisions = 16;
+
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+
+	Vector prevPos;
+	prevPos.Init();
+
+	float t = 0;
+	float dt = 1.0 / (float)subdivisions;
+	for( int i = 0; i <= subdivisions; i++, t += dt )
+	{
+		float omt = (1-t);
+		float p0 = omt*omt;
+		float p1 = 2*t*omt;
+		float p2 = t*t;
+
+		Vector curPos = p0 * start + p1 * control + p2 * end;
+
+		if ( !prevPos.IsZero() )
+		{
+			NDebugOverlay::Line( prevPos, curPos, color.x, color.y, color.z, false, 0.0f );
+		}
+
+		prevPos = curPos;
+	}
+}
+
+// rip this shit from foundryhelpers_client.cpp
+// extern void AddCoolLine( const Vector &v1, const Vector &v2, unsigned long iExtraFadeOffset, bool bNegateMovementDir );
+#endif
+
+
 void CVRController::Spawn()
 {
 	BaseClass::Spawn();
@@ -49,6 +96,8 @@ void CVRController::Spawn()
 
 	m_pLastUseEntity = NULL;
 	m_pGrabbedObject = NULL;
+	m_prevPointDir.Init();
+	m_pointerEnabled = false;
 }
 
 
@@ -80,13 +129,37 @@ void CVRController::UpdateTracker( CmdVRTracker& cmdTracker )
 		UpdateObject();
 	}
 
+#ifdef CLIENT_DLL
 	if ( vr_dbg_point.GetBool() )
 	{
 		Vector pointDir = GetPointDir();
+
+		if ( m_prevPointDir.IsZero() )
+			m_prevPointDir = pointDir;
+
+		Vector lerpedPointDir(pointDir * 32);
+
+		// does nothing
+		lerpedPointDir = Lerp( 0.2, m_prevPointDir, lerpedPointDir );
+
+		/*if ( m_nextPointSaveTime < gpGlobals->curtime )
+		{
+			m_prevPointDir = pointDir;
+			m_nextPointSaveTime = gpGlobals->curtime + 0.1;
+		}*/
+
+		m_prevPointDir = lerpedPointDir;
+
 		// TODO: do this better, and probably lerp the angles so the pointDir is smoothed like in neos vr
 		// maybe make a beam for it?
-		NDebugOverlay::Line( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 16), 203, 66, 245, false, 0.0f );
+		// NDebugOverlay::Line( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 32), 203, 66, 245, false, 0.0f );
+
+		// idk about control
+		// AddCoolLine( GetAbsOrigin(), GetAbsOrigin() + lerpedPointDir, 0.0f, false );
+		// DrawPointerQuadratic( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 4), GetAbsOrigin() + lerpedPointDir, 5.0f, Vector(203, 66, 245), 0.5f, 1.0f );
+		DrawBeamQuadratic( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 4), GetAbsOrigin() + lerpedPointDir, 1.0f, Vector(0, 0, 0), 0.5f, 1.0f );
 	}
+#endif
 }
 
 
@@ -117,9 +190,11 @@ void CVRController::DropObject()
 		for ( int i = 0; i < nCount; ++i )
 		{
 			m_pController->DetachObject( ppList[i] );
+			PhysClearGameFlags( ppList[i], FVPHYSICS_PLAYER_HELD );
 		}
 	}
 
+	m_pGrabbedObject->SetOwnerEntity( NULL );
 	m_pGrabbedObject = NULL;
 }
 
@@ -288,6 +363,7 @@ void CVRController::GrabObject( CBaseEntity* pEntity )
 
 	// we can pickup this entity
 	m_pGrabbedObject = pEntity;
+	m_pGrabbedObject->SetOwnerEntity( m_pPlayer );
 
 	CBaseAnimating *pAnimating = pEntity->GetMoveParent() ? pEntity->GetMoveParent()->GetBaseAnimating() : pEntity->GetBaseAnimating();
 	if (!pAnimating)
@@ -300,6 +376,7 @@ void CVRController::GrabObject( CBaseEntity* pEntity )
 		for ( int i = 0; i < nCount; ++i )
 		{
 			m_pController->AttachObject( ppList[i], true );
+			PhysSetGameFlags( ppList[i], FVPHYSICS_PLAYER_HELD );
 		}
 	}
 
@@ -334,6 +411,12 @@ Vector CVRController::GetPointDir()
 	AngleVectors( angles, &point );
 
 	return point;
+}
+
+
+void CVRController::SetDrawPointBeam( bool draw )
+{
+	m_pointerEnabled = draw;
 }
 
 
