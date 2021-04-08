@@ -30,6 +30,10 @@ ConVar vr_cl_interp( "vr_interp_player", "0.1", FCVAR_CLIENTDLL );
 	#undef CVRBasePlayer	
 #endif
 
+#if ENGINE_OLD
+typedef matrix3x4_t matrix3x4a_t;
+#endif
+
 
 BEGIN_PREDICTION_DATA( C_VRBasePlayer )
 END_PREDICTION_DATA()
@@ -502,16 +506,19 @@ void C_VRBasePlayer::RecurseApplyBoneTransforms( CVRBoneInfo* boneInfo )
 
 	if ( boneInfo->hasNewCoord )
 	{
-		matrix3x4_t newBone = boneInfo->newCoord;
-		matrix3x4_t newParentBone = boneInfo->GetParent()->GetCoord();
-
-
-
+#if ENGINE_NEW
 		matrix3x4a_t worldToBone;
-		MatrixInvert( newParentBone, worldToBone );
+		MatrixInvert( boneInfo->GetParent()->GetCoord(), worldToBone );
 
 		matrix3x4a_t local;
-		ConcatTransforms_Aligned( worldToBone, newBone, local );
+		ConcatTransforms_Aligned( worldToBone, boneInfo->newCoord, local );
+#else
+		matrix3x4_t worldToBone;
+		MatrixInvert( boneInfo->GetParent()->GetCoord(), worldToBone );
+
+		matrix3x4_t local;
+		ConcatTransforms( worldToBone, boneInfo->newCoord, local );
+#endif
 
 		// uh
 		Vector bonePos;

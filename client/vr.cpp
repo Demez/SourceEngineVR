@@ -640,7 +640,7 @@ void VRSystem::Submit( ITexture* rtEye, VREye eye )
 	g_VRInt.Submit( IsDX11(), materials->VR_GetSubmitInfo( rtEye ), ToOVREye( eye ) );
 #else
 	// TODO: use the hack gmod vr uses
-    g_VRInt.Submit( IsDX11(), NULL, ToOVREye( eye ), textureBounds );
+    g_VRInt.Submit( IsDX11(), NULL, ToOVREye( eye ) );
 #endif
 }
 

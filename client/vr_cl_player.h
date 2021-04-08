@@ -58,7 +58,12 @@ struct CVRBoneInfo
 	Vector newPos;
 
 	bool hasNewCoord;
+
+#if ENGINE_ASW
+	matrix3x4a_t newCoord;
+#else
 	matrix3x4_t newCoord;
+#endif
 
 	// coordinates relative to the parent bone
 	Vector m_relPos;
