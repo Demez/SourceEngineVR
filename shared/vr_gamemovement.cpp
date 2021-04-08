@@ -1,5 +1,6 @@
 #include "cbase.h"
 #include "vr_gamemovement.h"
+#include "tier1/fmtstr.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -8,6 +9,10 @@
 extern CMoveData* g_pMoveData;
 
 CVRMoveData* g_VRMoveData = (CVRMoveData*)g_pMoveData;
+
+
+ConVar vr_dbg_playspacemove( "vr_dbg_playspacemove", "0" );
+
 
 CVRMoveData* GetVRMoveData()
 {
@@ -32,6 +37,7 @@ CmdVRTracker* CVRMoveData::GetTracker( const char* name )
 //-----------------------------------------------------------------------------
 CVRGameMovement::CVRGameMovement()
 {
+	m_viewOriginOffset.Init();
 }
 
 
@@ -43,118 +49,81 @@ CVRMoveData* CVRGameMovement::GetVRMoveData()
 
 void CVRGameMovement::PlayerMove()
 {
-	if ( GetVRMoveData()->vr_active )
-	{
-		// const Vector prevVelocity = mv->m_vecVelocity;
-		// mv->m_vecVelocity.x += mv->vr_originOffset.x;
-		// mv->m_vecVelocity.y += mv->vr_originOffset.y;
-
-		// mv->m_flForwardMove += mv->vr_originOffset.x;
-		// mv->m_flSideMove += mv->vr_originOffset.y;
-	}
-
 	BaseClass::PlayerMove();
 
-	// this doesn't really work, it just jitters a lot
-#if 0
-	if ( mv->vr_active && !mv->vr_originOffset.IsZero() )
-	{
-		// Vector originOffset = mv->vr_hmdOrigin - m_oldViewPos;
-		// m_oldViewPos = mv->vr_hmdOrigin;
+	CVRMoveData* pMove = GetVRMoveData();
 
-		Vector startPos = player->GetAbsOrigin();
-		Vector endPos = player->GetAbsOrigin() + mv->vr_originOffset;
+	if ( !pMove->vr_active )
+		return;
 
-		trace_t tr;
-		TracePlayerBBox( startPos, endPos, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, tr );
-
-		// hmmmm
-		/*if ( tr.fraction == 1 )
-		{
-			player->SetAbsOrigin( tr.endpos );
-			mv->SetAbsOrigin( tr.endpos );
-		}*/
-
-		player->SetAbsOrigin( endPos );
-		mv->SetAbsOrigin( endPos );
-	}
-#endif
-
-	/*if ( mv->vr_active )
-	{
-		// const Vector prevVelocity = mv->m_vecVelocity;
-		mv->m_vecVelocity.x += mv->vr_originOffset.x;
-		mv->m_vecVelocity.y += mv->vr_originOffset.y;
-
-		Vector absVelocity = player->GetAbsVelocity();
-		absVelocity.x += mv->vr_originOffset.x;
-		absVelocity.y += mv->vr_originOffset.y;
-		player->SetAbsVelocity( absVelocity );
-	}*/
+	HandlePlaySpaceMovement( pMove );
 }
 
 
-void CVRGameMovement::ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMoveBase )
+void CVRGameMovement::ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove )
 {
-	CVRMoveData* pMove = ToVRMoveData( pMoveBase );
-
-	if ( pMove->vr_active )
-	{
-		// this does nothing lmao
-		/*pMove->m_vecVelocity.x += pMove->vr_originOffset.x;
-		pMove->m_vecVelocity.y += pMove->vr_originOffset.y;
-
-		Vector absVelocity = pPlayer->GetAbsVelocity();
-		absVelocity.x += pMove->vr_originOffset.x;
-		absVelocity.y += pMove->vr_originOffset.y;
-		pPlayer->SetAbsVelocity( absVelocity );*/
-
-		/*Vector forward, right, up;
-
-		VMatrix test;
-		test.SetupMatrixOrgAngles( mv->vr_originOffset, mv->m_vecViewAngles );
-		forward = test.GetForward();
-		right = test.GetLeft();*/
-
-		// pMove->m_flForwardMove += pMove->vr_originOffset.x;
-		// pMove->m_flSideMove += pMove->vr_originOffset.y;
-	}
-
-	BaseClass::ProcessMovement( pPlayer, pMoveBase );
-
-	// this doesn't really work, it just jitters a lot
-	if ( pMove->vr_active && !pMove->vr_originOffset.IsZero() )
-	{
-		// Vector originOffset = mv->vr_hmdOrigin - m_oldViewPos;
-		// m_oldViewPos = mv->vr_hmdOrigin;
-
-		Vector startPos = pMove->GetAbsOrigin();
-		Vector endPos = pMove->GetAbsOrigin() + pMove->vr_originOffset;
-
-		/*trace_t tr;
-		TracePlayerBBox( startPos, endPos, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, tr );
-
-		// hmmmm
-		if ( tr.fraction == 1 )
-		{
-		player->SetAbsOrigin( tr.endpos );
-		mv->SetAbsOrigin( tr.endpos );
-		}*/
-
-		pPlayer->SetAbsOrigin( endPos );
-		pMove->SetAbsOrigin( endPos );
-	}
-
+	BaseClass::ProcessMovement( pPlayer, pMove );
 	ProcessVRMovement( (CVRBasePlayerShared*)pPlayer, (CVRMoveData*)pMove );
+}
+
+
+void CVRGameMovement::HandlePlaySpaceMovement( CVRMoveData *pMove )
+{
+	Vector vrPos = pMove->vr_originOffset;
+	vrPos.z = 0;
+
+	Vector whereOriginWouldBe;
+	whereOriginWouldBe = pMove->GetAbsOrigin() + m_viewOriginOffset;
+	whereOriginWouldBe.z -= m_viewOriginOffset.z;
+
+	Vector goalPos = whereOriginWouldBe + vrPos;
+	Vector newPos = goalPos;
+
+	trace_t	trace;
+	TracePlayerBBox( whereOriginWouldBe, goalPos, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, trace );
+
+	if ( !trace.startsolid && !trace.allsolid )
+	{
+		newPos = trace.endpos;
+	}
+
+	if ( trace.fraction == 1 )
+	{
+		mv->SetAbsOrigin( newPos );
+		m_viewOriginOffset.Init();
+	}
+	else
+	{
+		Vector goalDiff = goalPos - newPos;
+		Vector posDiff = newPos - whereOriginWouldBe;
+		m_viewOriginOffset += goalDiff + posDiff;
+	}
+
+	m_viewOriginOffset.z = pMove->GetHeadset() ? pMove->GetHeadset()->pos.z : 0.0f;
+
+	GetVRPlayer()->m_viewOriginOffset = m_viewOriginOffset;
+
+	if ( vr_dbg_playspacemove.GetBool() )
+	{
+		// NDebugOverlay::Line( whereOriginWouldBe, goalPos, 0, 255, 0, false, 0.0f );
+		// NDebugOverlay::Line( whereOriginWouldBe, newPos, 0, 0, 255, false, 0.0f );
+
+		engine->Con_NPrintf( 20, "New Origin:               %s\n", VecToString(newPos) );
+		engine->Con_NPrintf( 21, "Goal Origin:              %s\n", VecToString(goalPos) );
+		engine->Con_NPrintf( 22, "Player Origin:            %s\n", VecToString(pMove->GetAbsOrigin()) );
+		engine->Con_NPrintf( 23, "View Origin:              %s\n", VecToString(whereOriginWouldBe) );
+		engine->Con_NPrintf( 24, "View Offset from Origin:  %s\n", VecToString(m_viewOriginOffset) );
+		engine->Con_NPrintf( 25, "Trace Fraction: %.6f\n", trace.fraction );
+	}
 }
 
 
 void CVRGameMovement::ProcessVRMovement( CVRBasePlayerShared *pPlayer, CVRMoveData *pMove )
 {
-	// this doesn't really work, it just jitters a lot
 	if ( !pMove->vr_active || pPlayer == NULL || pMove == NULL )
 		return;
 
+	// really shouldn't be here since this needs prediction on for the client, so it won't work in single player
 	pPlayer->UpdateTrackers();
 }
 

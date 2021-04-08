@@ -112,6 +112,7 @@ public:
 	// Utils
 	// ========================================
 
+	VMatrix                     OVRToSrcCoords( const VMatrix& vortex, bool scale = true );
 	bool                        GetEyeProjectionMatrix( VMatrix *pResult, VREye eEye, float zNear, float zFar, float fovScale );
 	VMatrix                     GetMidEyeFromEye( VREye eEye );
 
@@ -164,6 +165,8 @@ public:
 	VRViewParams                GetViewParams();
 	void                        GetFOVOffset( VREye eye, float &aspectRatio, float &hFov );
 
+	double                      GetScale();
+	void                        SetScale( double newScale );
 	void                        SetSeatedMode( bool seated );
 
 	bool                        IsDX11();
@@ -183,6 +186,7 @@ public:
 	// CUtlVector< VRBaseAction* > previousActions;
 
 	bool m_seatedMode;
+	double m_scale;
 };
 
 extern VRSystem g_VR;

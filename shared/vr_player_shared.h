@@ -76,6 +76,7 @@ public:
 
 	// network this? only used on the client at the moment
 	QAngle m_vrViewAngles;
+	Vector m_viewOriginOffset;  // calculated from vr_gamemovement.cpp
 
 friend class CVRGameMovement;
 };

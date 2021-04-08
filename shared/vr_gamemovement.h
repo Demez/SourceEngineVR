@@ -52,9 +52,10 @@ public:
 	virtual void            ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove );
 	virtual void            PlayerMove();
 
+	virtual void            HandlePlaySpaceMovement( CVRMoveData *pMove );
 	virtual void            ProcessVRMovement( CVRBasePlayerShared *pPlayer, CVRMoveData *pMove );
 
-	Vector					m_oldViewPos;
+	Vector					m_viewOriginOffset; // offset of view based on where bbox is
 };
 
 

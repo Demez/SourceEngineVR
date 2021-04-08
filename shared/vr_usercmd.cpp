@@ -121,6 +121,11 @@ void WriteUsercmdVR( bf_write *buf, CUserCmd *to, CUserCmd *from )
 			WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[0]", FROM_TRACKER(from->vr_trackers[i].ang[0]), to->vr_trackers[i].ang[0] );
 			WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[1]", FROM_TRACKER(from->vr_trackers[i].ang[1]), to->vr_trackers[i].ang[1] );
 			WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[2]", FROM_TRACKER(from->vr_trackers[i].ang[2]), to->vr_trackers[i].ang[2] );
+
+			// this probably can be calculated so we can send less data, but this is the lazy way since it gives the velocity already
+			// WriteUserCmdDeltaFloat( buf, "vr_trackers[i].vel[0]", FROM_TRACKER(from->vr_trackers[i].vel[0]), to->vr_trackers[i].vel[0] );
+			// WriteUserCmdDeltaFloat( buf, "vr_trackers[i].vel[1]", FROM_TRACKER(from->vr_trackers[i].vel[1]), to->vr_trackers[i].vel[1] );
+			// WriteUserCmdDeltaFloat( buf, "vr_trackers[i].vel[2]", FROM_TRACKER(from->vr_trackers[i].vel[2]), to->vr_trackers[i].vel[2] );
 		}
 	}
 	else
@@ -198,6 +203,10 @@ void ReadUsercmdVR( bf_read *buf, CUserCmd *move, CUserCmd *from )
 			if (buf->ReadOneBit()) move->vr_trackers[i].ang[0] = buf->ReadFloat();
 			if (buf->ReadOneBit()) move->vr_trackers[i].ang[1] = buf->ReadFloat();
 			if (buf->ReadOneBit()) move->vr_trackers[i].ang[2] = buf->ReadFloat();
+
+			// if (buf->ReadOneBit()) move->vr_trackers[i].vel[0] = buf->ReadFloat();
+			// if (buf->ReadOneBit()) move->vr_trackers[i].vel[1] = buf->ReadFloat();
+			// if (buf->ReadOneBit()) move->vr_trackers[i].vel[2] = buf->ReadFloat();
 
 			move->vr_trackers[i].name = GetTrackerName(move->vr_trackers[i].index);
 		}

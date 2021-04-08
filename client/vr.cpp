@@ -38,8 +38,9 @@
 ConVar vr_autostart("vr_autostart", "0", FCVAR_ARCHIVE, "auto start vr on level load");
 ConVar vr_active_hack("vr_active_hack", "0", FCVAR_CLIENTDLL, "lazy hack for anything that needs to know if vr is enabled outside of the game dlls (mouse lock)");
 ConVar vr_clamp_res("vr_clamp_res", "1", FCVAR_CLIENTDLL, "clamp the resolution to the screen size until the render clamping issue is figured out");
-ConVar vr_hoffset_mult("vr_offset_mult_h", "0.5");   // ideal value would be 0
-ConVar vr_voffset_mult("vr_offset_mult_v", "0.25");  // anything lower than 0.25 doesn't look right in the headset
+ConVar vr_scale_override("vr_scale_override", "42.5");  // anything lower than 0.25 doesn't look right in the headset
+
+extern ConVar vr_scale;
 
 
 VRSystem                    g_VR;
@@ -48,8 +49,7 @@ extern VRSystemInternal     g_VRInt;
 vr::IVRSystem*              g_pOVR = NULL;
 vr::IVRInput*               g_pOVRInput = NULL;
 
-
-void    OVR_GetActions( CUtlVector< VRBaseAction* > &actions );
+const double DEFAULT_VR_SCALE = 39.37012415030996;
 
 
 CON_COMMAND(vr_enable, "")   { g_VR.Enable(); }
@@ -189,12 +189,60 @@ bool VRSystem::GetEyeProjectionMatrix( VMatrix *pResult, VREye eEye, float zNear
 }
 
 
+VMatrix VRSystem::OVRToSrcCoords( const VMatrix& vortex, bool scale )
+{
+    // const float inchesPerMeter = (float)(39.3700787);
+
+    // 10.0f/0.254f;
+    // 39.37012415030996
+    // float inchesPerMeter = (float)(39.3700787);
+    // double inchesPerMeter = (double)(39.37012415030996);
+    double inchesPerMeter = m_scale;
+
+    if ( vr_scale_override.GetFloat() > 0 )
+        inchesPerMeter = vr_scale_override.GetFloat();
+
+    if ( scale )
+        inchesPerMeter *= vr_scale.GetFloat();
+
+    // From Vortex: X=right, Y=up, Z=backwards, scale is meters.
+    // To Source: X=forwards, Y=left, Z=up, scale is inches.
+    //
+    // s_from_v = [ 0 0 -1 0
+    //             -1 0 0 0
+    //              0 1 0 0
+    //              0 0 0 1];
+    //
+    // We want to compute vmatrix = s_from_v * vortex * v_from_s; v_from_s = s_from_v'
+    // Given vortex =
+    // [00    01    02    03
+    //  10    11    12    13
+    //  20    21    22    23
+    //  30    31    32    33]
+    //
+    // s_from_v * vortex * s_from_v' =
+    //  22    20   -21   -23
+    //  02    00   -01   -03
+    // -12   -10    11    13
+    // -32   -30    31    33
+    //
+    const vec_t (*v)[4] = vortex.m;
+    VMatrix result(
+        v[2][2],  v[2][0], -v[2][1], -v[2][3] * inchesPerMeter,
+        v[0][2],  v[0][0], -v[0][1], -v[0][3] * inchesPerMeter,
+        -v[1][2], -v[1][0],  v[1][1],  v[1][3] * inchesPerMeter,
+        -v[3][2], -v[3][0],  v[3][1],  v[3][3]);
+
+    return result;
+}
+
+
 VMatrix VRSystem::GetMidEyeFromEye( VREye eEye )
 {
 	if( g_pOVR )
 	{
 		vr::HmdMatrix34_t matMidEyeFromEye = g_pOVR->GetEyeToHeadTransform( ToOVREye( eEye ) );
-		return OpenVRToSourceCoordinateSystem( VMatrixFrom34( matMidEyeFromEye.m ), true );
+		return OVRToSrcCoords( VMatrixFrom34( matMidEyeFromEye.m ), true );
 	}
 	else
 	{
@@ -230,6 +278,9 @@ void VRSystem::Update( float frametime )
     g_VRInt.WaitGetPoses();
 	UpdateTrackers();
 	UpdateActions();
+
+    if ( m_scale <= 0.0f )
+        m_scale = DEFAULT_VR_SCALE;
 
     // hmmmm
     if ( !vr_active_hack.GetBool() )
@@ -319,7 +370,7 @@ void VRSystem::UpdateTrackers()
             struct VRHostTracker* tracker = (struct VRHostTracker*) malloc(sizeof(struct VRHostTracker));
             tracker->name = strdup(poseName);
 
-            tracker->mat = OpenVRToSourceCoordinateSystem( VMatrixFrom34( mat.m ) );
+            tracker->mat = OVRToSrcCoords( VMatrixFrom34( mat.m ) );
 
             MatrixGetColumn( tracker->mat.As3x4(), 3, tracker->pos );
             MatrixToAngles( tracker->mat, tracker->ang );
@@ -507,6 +558,7 @@ bool VRSystem::Enable()
     g_VRInt.AddActiveActionSet("/actions/main");
 
 	active = true;
+    m_scale = DEFAULT_VR_SCALE;
 
     // convienence
     engine->ClientCmd_Unrestricted("engine_no_focus_sleep 0");
@@ -603,6 +655,17 @@ void VRSystem::Submit( ITexture* leftEye, ITexture* rightEye )
 void VRSystem::SetSeatedMode( bool seated )
 {
     m_seatedMode = seated;
+}
+
+
+void VRSystem::SetScale( double newScale )
+{
+    m_scale = newScale;
+}
+
+double VRSystem::GetScale()
+{
+    return m_scale;
 }
 
 

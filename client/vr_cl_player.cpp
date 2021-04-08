@@ -259,7 +259,8 @@ Vector C_VRBasePlayer::EyePosition()
 			return BaseClass::EyePosition();
 
 		Vector basePos = GetAbsOrigin();
-		basePos.z += hmd->m_pos.z;
+		basePos += m_viewOriginOffset;
+		// basePos.z += hmd->m_pos.z;
 
 		return basePos;
 	}
@@ -405,6 +406,7 @@ CStudioHdr* C_VRBasePlayer::OnNewModel()
 	CStudioHdr* hdr = BaseClass::OnNewModel();
 
 	SetupConstraints();
+	SetupPlayerScale();
 
 	return hdr;
 }
@@ -413,6 +415,29 @@ CStudioHdr* C_VRBasePlayer::OnNewModel()
 CON_COMMAND( vr_test_constraints, "" )
 {
 	GetLocalVRPlayer()->SetupConstraints();
+}
+
+CON_COMMAND( vr_test_scale, "" )
+{
+	GetLocalVRPlayer()->SetupPlayerScale();
+}
+
+
+void C_VRBasePlayer::SetupPlayerScale()
+{
+	if ( /*g_VR.active &&*/ IsLocalPlayer() )
+	{
+		int headBone = LookupBone( "ValveBiped.Bip01_Head1" );
+		if ( headBone != -1 )
+		{
+			matrix3x4a_t headMat = GetBone( headBone );
+
+			Vector headPos;
+			MatrixGetColumn( headMat, 3, headPos );
+
+			g_VR.SetScale( headPos.z - GetAbsOrigin().z );
+		}
+	}
 }
 
 
@@ -610,7 +635,8 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 		if (pTracker->IsHeadset())
 		{
 			CVRBoneInfo* mainBoneInfo = GetBoneInfo( LookupBone( pTracker->GetBoneName() ) );
-			mainBoneInfo->SetCustomAngles( pTracker->GetAbsAngles() );
+			if ( mainBoneInfo )
+				mainBoneInfo->SetCustomAngles( pTracker->GetAbsAngles() );
 
 			// BuildFirstPersonMeathookTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, "ValveBiped.Bip01_Head1" );
 		}
@@ -930,6 +956,7 @@ void RotateAroundAxis( QAngle& angle, Vector axis, float degrees )
 	angle = rotation;*/
 
 	VMatrix mat;
+	AngleMatrix( angle, mat.As3x4() );
 	MatrixBuildRotationAboutAxis( mat, axis, degrees );
 
 	// MatrixAngles( mat.As3x4(), angle );

@@ -326,10 +326,29 @@ Vector CVRController::GetPointDir()
 	// probably rotating forward?
 	// angles.y += 45.0;
 
-	Vector forward;
-	AngleVectors( angles, &forward );
+	Vector forward, right;
+	AngleVectors( angles, &forward, &right, NULL );
 
-	return forward;
+	VMatrix mat, rotateMat;
+	// AngleMatrix( angles, forward, mat.As3x4() );
+	AngleMatrix( angles, mat.As3x4() );
+	AngleMatrix( angles, forward, rotateMat.As3x4() );
+	// MatrixBuildRotationAboutAxis( rotateMat, right, -45 );
+	MatrixRotate( rotateMat, right, -45 );
+
+	matrix3x4_t test;
+	// ConcatTransforms( mat.As3x4(), rotateMat.As3x4(), test );
+	ConcatTransforms( mat.As3x4(), rotateMat.As3x4(), test );
+
+	// MatrixAngles( mat.As3x4(), angle );
+	MatrixAngles( test, angles );
+
+	Vector point;
+	// VectorYawRotate( forward, 0, point );
+	MatrixGetColumn( test, 3, point );
+	// AngleVectors( angles, &point );
+
+	return point;
 }
 
 

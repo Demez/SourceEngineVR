@@ -105,6 +105,7 @@ public:
 	virtual void                    RecurseApplyBoneTransforms( CVRBoneInfo* boneInfo );
 
 	virtual void                    SetupConstraints();
+	virtual void                    SetupPlayerScale();
 
 	// ------------------------------------------------------------------------------------------------
 	// New VR Only Functions
