@@ -11,7 +11,7 @@
 
 
 ConVar vr_dbg_pickup("vr_dbg_pickup", "0", FCVAR_REPLICATED);
-ConVar vr_dbg_point("vr_dbg_point", "0", FCVAR_REPLICATED);
+ConVar vr_dbg_point("vr_dbg_point", "1", FCVAR_REPLICATED);
 
 ConVar vr_pickup_damp("vr_pickup_damp", "0.5", FCVAR_REPLICATED);
 ConVar vr_pickup_speed("vr_pickup_speed", "250", FCVAR_REPLICATED);
@@ -322,31 +322,16 @@ Vector CVRController::GetPalmDir()
 
 Vector CVRController::GetPointDir()
 {
-	QAngle angles = GetAbsAngles();
-	// probably rotating forward?
-	// angles.y += 45.0;
+	QAngle angles = m_ang;
 
-	Vector forward, right;
-	AngleVectors( angles, &forward, &right, NULL );
-
-	VMatrix mat, rotateMat;
-	// AngleMatrix( angles, forward, mat.As3x4() );
-	AngleMatrix( angles, mat.As3x4() );
-	AngleMatrix( angles, forward, rotateMat.As3x4() );
-	// MatrixBuildRotationAboutAxis( rotateMat, right, -45 );
-	MatrixRotate( rotateMat, right, -45 );
-
-	matrix3x4_t test;
-	// ConcatTransforms( mat.As3x4(), rotateMat.As3x4(), test );
-	ConcatTransforms( mat.As3x4(), rotateMat.As3x4(), test );
-
-	// MatrixAngles( mat.As3x4(), angle );
-	MatrixAngles( test, angles );
+	VMatrix mat, rotateMat, outMat;
+	MatrixFromAngles( angles, mat );
+	MatrixBuildRotationAboutAxis( rotateMat, Vector( 0, 1, 0 ), 35 );
+	MatrixMultiply( mat, rotateMat, outMat );
+	MatrixToAngles( outMat, angles );
 
 	Vector point;
-	// VectorYawRotate( forward, 0, point );
-	MatrixGetColumn( test, 3, point );
-	// AngleVectors( angles, &point );
+	AngleVectors( angles, &point );
 
 	return point;
 }
