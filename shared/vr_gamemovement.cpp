@@ -1,6 +1,7 @@
 #include "cbase.h"
 #include "vr_gamemovement.h"
 #include "tier1/fmtstr.h"
+#include "coordsize.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -72,22 +73,61 @@ void CVRGameMovement::HandlePlaySpaceMovement( CVRMoveData *pMove )
 	Vector vrPos = pMove->vr_originOffset;
 	vrPos.z = 0;
 
-	Vector whereOriginWouldBe;
-	whereOriginWouldBe = pMove->GetAbsOrigin() + m_viewOriginOffset;
-	whereOriginWouldBe.z -= m_viewOriginOffset.z;
+	Vector viewOrigin = pMove->GetAbsOrigin() + m_viewOriginOffset;
+	viewOrigin.z -= m_viewOriginOffset.z;
 
-	Vector goalPos = whereOriginWouldBe + vrPos;
+	Vector goalPos = viewOrigin + vrPos;
 	Vector newPos = goalPos;
 
+	bool movePlayerOrigin = false;
+	bool isMovingUp = false;
 	trace_t	trace;
-	TracePlayerBBox( whereOriginWouldBe, goalPos, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, trace );
+
+	TracePlayerBBox( viewOrigin, goalPos, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, trace );
 
 	if ( !trace.startsolid && !trace.allsolid )
 	{
 		newPos = trace.endpos;
+		movePlayerOrigin = ( trace.fraction == 1 );
+	}
+
+	// do another trace up for steps or slopes
+	if ( trace.fraction != 1 && player->m_Local.m_bAllowAutoMovement )
+	{
+		Vector upGoalPos = goalPos;
+		upGoalPos.z += player->m_Local.m_flStepSize + DIST_EPSILON;
+
+		TracePlayerBBox( viewOrigin, upGoalPos, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, trace );
+
+		movePlayerOrigin = ( trace.fraction == 1 );
+		isMovingUp = ( trace.fraction == 1 );
 	}
 
 	if ( trace.fraction == 1 )
+	{
+		// find the ground position now
+		TracePlayerBBox( trace.endpos, goalPos, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, trace );
+
+		newPos = trace.endpos;
+		movePlayerOrigin = true;
+	}
+
+	// is the goal position a valid place to move?
+	// we don't need to check this for moving up
+	if ( movePlayerOrigin && !isMovingUp )
+	{
+		// we want to check if this is a valid place to move, and we aren't trying to walk through a wall
+		// so trace where the player origin is vs. where the view origin is to make sure we aren't doing that
+		TracePlayerBBox( mv->GetAbsOrigin(), viewOrigin, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, trace );
+
+		if ( trace.fraction != 1 )
+		{
+			newPos = trace.endpos;
+			movePlayerOrigin = ( trace.fraction == 1 );
+		}
+	}
+
+	if ( movePlayerOrigin )
 	{
 		mv->SetAbsOrigin( newPos );
 		m_viewOriginOffset.Init();
@@ -95,7 +135,7 @@ void CVRGameMovement::HandlePlaySpaceMovement( CVRMoveData *pMove )
 	else
 	{
 		Vector goalDiff = goalPos - newPos;
-		Vector posDiff = newPos - whereOriginWouldBe;
+		Vector posDiff = newPos - viewOrigin;
 		m_viewOriginOffset += goalDiff + posDiff;
 	}
 
@@ -111,9 +151,11 @@ void CVRGameMovement::HandlePlaySpaceMovement( CVRMoveData *pMove )
 		engine->Con_NPrintf( 20, "New Origin:               %s\n", VecToString(newPos) );
 		engine->Con_NPrintf( 21, "Goal Origin:              %s\n", VecToString(goalPos) );
 		engine->Con_NPrintf( 22, "Player Origin:            %s\n", VecToString(pMove->GetAbsOrigin()) );
-		engine->Con_NPrintf( 23, "View Origin:              %s\n", VecToString(whereOriginWouldBe) );
+		engine->Con_NPrintf( 23, "View Origin:              %s\n", VecToString(viewOrigin) );
 		engine->Con_NPrintf( 24, "View Offset from Origin:  %s\n", VecToString(m_viewOriginOffset) );
 		engine->Con_NPrintf( 25, "Trace Fraction: %.6f\n", trace.fraction );
+		engine->Con_NPrintf( 26, "Should Move Player: %s\n", movePlayerOrigin ? "YES" : "NO" );
+		engine->Con_NPrintf( 26, "Is Moving Up: %s\n", isMovingUp ? "YES" : "NO" );
 	}
 }
 
