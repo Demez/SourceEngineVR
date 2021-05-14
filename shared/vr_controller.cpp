@@ -157,7 +157,7 @@ void CVRController::UpdateTracker( CmdVRTracker& cmdTracker )
 		// idk about control
 		// AddCoolLine( GetAbsOrigin(), GetAbsOrigin() + lerpedPointDir, 0.0f, false );
 		// DrawPointerQuadratic( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 4), GetAbsOrigin() + lerpedPointDir, 5.0f, Vector(203, 66, 245), 0.5f, 1.0f );
-		DrawBeamQuadratic( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 4), GetAbsOrigin() + lerpedPointDir, 1.0f, Vector(0, 0, 0), 0.5f, 1.0f );
+		DrawBeamQuadratic( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 4), GetAbsOrigin() + lerpedPointDir, 1.0f, Vector(203, 66, 245), 0.5f, 1.0f );
 	}
 #endif
 }

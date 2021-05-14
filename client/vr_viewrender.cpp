@@ -13,17 +13,16 @@
 
 extern ConVar vr_fov_override;
 
-ConVar vr_desktop_simulate_perf("vr_desktop_simulate_perf", "0", FCVAR_CLIENTDLL);
-ConVar vr_dbg_rt("vr_dbg_rt", "0", FCVAR_CLIENTDLL);
-ConVar vr_desktop_eye("vr_desktop_eye", "3", FCVAR_CLIENTDLL, "0 - no screen view, 1 - crop left eye, 2 - the right eye, 3 - rerender the desktop view");
-ConVar vr_dbg_rt_test("vr_dbg_rt_test", "0", FCVAR_CLIENTDLL);
-ConVar vr_eye_height("vr_eye_h", "0", FCVAR_CLIENTDLL, "Override the render target height, 0 to disable");
-ConVar vr_eye_width("vr_eye_w", "0", FCVAR_CLIENTDLL, "Override the render target width, 0 to disable");
+ConVar vr_desktop_eye("vr_desktop_eye", "1", FCVAR_ARCHIVE, "0 - no screen view, 1 - crop left eye, 2 - the right eye, 3 - rerender the desktop view");
+ConVar vr_test_cam("vr_test_cam", "1", FCVAR_ARCHIVE);
 ConVar vr_nearz("vr_nearz", "5", FCVAR_CLIENTDLL);
 ConVar vr_autoupdate_rt("vr_autoupdate_rt", "1", FCVAR_CLIENTDLL);
 
+ConVar vr_dbg_rt("vr_dbg_rt", "0", FCVAR_CLIENTDLL);
+ConVar vr_dbg_rt_test("vr_dbg_rt_test", "0", FCVAR_CLIENTDLL);
+ConVar vr_dbg_rt_scale("vr_dbg_rt_scale", "0.5", FCVAR_CLIENTDLL);
 
-// issue: nothing can inherit this with this function, kind of a major issue
+
 static CVRViewRender g_ViewRender;
 IViewRender *GetViewRenderInstance()
 {
@@ -45,7 +44,7 @@ CVRViewRender::CVRViewRender()
 	}
 	else
 	{
-		Warning("[VR] failed to override viewrender??? wtf\n");
+		Warning("[VR] failed to create viewrender??? wtf\n");
 	}
 
 	leftEye = NULL;
@@ -85,10 +84,10 @@ void CVRViewRender::LevelShutdown()
 
 void CVRViewRender::InitEyeRenderTargets()
 {
-	if ( !g_VR.active )
+	if ( !g_VR.active && !vr_dbg_rt_test.GetBool() )
 		return;
 
-	// if we are hackily resizing the render targets, free the existing ones
+	// if we are resizing the render targets, free the existing ones
 	// Demez TODO: there is an issue here with this: if we change the eye resolution and make new render textures when already active,
 	// the render targets sent to the headset just lock up and is never updated after the first time it's sent,
 	// not even restarting openvr fixes it, so im not sure what's going on for that to happen yet
@@ -98,7 +97,6 @@ void CVRViewRender::InitEyeRenderTargets()
 	if ( rightEye != NULL )
 		rightEye->Release();
 
-	// setup with override convars
 	VRViewParams viewParams = g_VR.GetViewParams();
 	lastWidth = viewParams.width;
 	lastHeight = viewParams.height;
@@ -155,12 +153,13 @@ void CVRViewRender::InitEyeRenderTargets()
 
 void CVRViewRender::UpdateEyeRenderTargets()
 {
+	int width, height;
+	
 	VRViewParams viewParams = g_VR.GetViewParams();
-	if ( leftEye == NULL || rightEye == NULL || lastWidth != viewParams.width || lastHeight != viewParams.height
-#if !ENGINE_ASW
-		|| g_VR.NeedD3DInit()
-#endif
-		)
+	width = viewParams.width;
+	height = viewParams.height;
+
+	if ( leftEye == NULL || rightEye == NULL || lastWidth != width || lastHeight != height || g_VR.NeedD3DInit() )
 	{
 		InitEyeRenderTargets();
 	}
@@ -261,21 +260,33 @@ void CVRViewRender::PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &
 	}
 	else if ( vr_dbg_rt_test.GetBool() )
 	{
-		eyeView.width = 512;
-		eyeView.height = 512;
-		eyeView.m_flAspectRatio = 1.0;
+		VRViewParams viewParams = g_VR.GetViewParams();
+		eyeView.width = viewParams.width;
+		eyeView.height = viewParams.height;
+		eyeView.m_flAspectRatio = (float)eyeView.width / (float)eyeView.height;
 	}
 
 	eyeView.zNear = vr_nearz.GetFloat();
 
-	if ( vr_eye_height.GetFloat() > 0 )
-		eyeView.height = vr_eye_height.GetFloat();
+	// eyeView.m_nUnscaledWidth = eyeView.width;
+	// eyeView.m_nUnscaledHeight = eyeView.height;
+}
 
-	if ( vr_eye_width.GetFloat() > 0 )
-		eyeView.width = vr_eye_width.GetFloat();
 
-	if ( vr_eye_width.GetFloat() > 0 || vr_eye_height.GetFloat() > 0 )
-		eyeView.m_flAspectRatio = (float)eyeView.width / (float)eyeView.height;
+// will improve this later, just thrown together for easier ik debugging
+void CVRViewRender::SetupCameraView( CViewSetup &camView )
+{
+	// temporarily set a fixed position based on the player position
+	C_VRBasePlayer* pPlayer = GetLocalVRPlayer();
+
+	if ( !pPlayer )
+		return;
+
+	Vector pos = pPlayer->GetAbsOrigin();
+	Vector offset(64.0, 0.0, 40.0);
+
+	camView.origin = pos + offset;
+	camView.angles = QAngle(0, 180, 0);
 }
 
 
@@ -291,21 +302,28 @@ void CVRViewRender::RenderView( const CViewSetup &view, int nClearFlags, int wha
 #define BASE_RENDER_VIEW( view, hudView, nClearFlags, whatToDraw ) BaseViewRender::RenderView( view, nClearFlags, whatToDraw )
 #endif
 
+#if ENGINE_CSGO
+#define PUSH_VIEW( pRenderContext, eyeView, nFlags, eyeTex, frustum ) render->Push3DView( pRenderContext, eyeView, nFlags, eyeTex, frustum )
+#define POP_VIEW( pRenderContext, frustum ) render->PopView( pRenderContext, frustum )
+#else
+#define PUSH_VIEW( pRenderContext, eyeView, nFlags, eyeTex, frustum ) render->Push3DView( eyeView, nFlags, eyeTex, frustum )
+#define POP_VIEW( pRenderContext, frustum ) render->PopView( frustum )
+#endif
+
 
 void CVRViewRender::RenderViewEye( CMatRenderContextPtr &pRenderContext, const CViewSetup &view, int nClearFlags, ITexture* eyeTex, VREye eye )
 {
+	// wtf??
+	if ( eyeTex == NULL )
+		return;
+
 	CViewSetup eyeView(view);
 	PrepareEyeViewSetup( eyeView, view, eye );
 	int rtWidth = eyeTex->GetActualWidth();
 	int rtHeight = eyeTex->GetActualHeight();
 
-	// pRenderContext->SetRenderTarget( leftEye );
+	PUSH_VIEW( pRenderContext, eyeView, 0, eyeTex, GetFrustum() );
 
-	// render->Push3DView( pRenderContext, eyeView, 0, leftEye, GetFrustum() );
-
-	// pRenderContext->Viewport( eyeView.x, eyeView.y, eyeView.width, eyeView.height );
-
-	pRenderContext->PushRenderTargetAndViewport( eyeTex, 0, 0, rtWidth, rtHeight );
 	pRenderContext->ClearColor3ub( 0, 0, 0 );
 	pRenderContext->ClearBuffers( true, true );
 
@@ -314,15 +332,38 @@ void CVRViewRender::RenderViewEye( CMatRenderContextPtr &pRenderContext, const C
 	if ( !vr_dbg_rt_test.GetBool() )
 		g_VR.Submit( eyeTex, eye );
 
-	// render->PopView( pRenderContext, GetFrustum() );
-	pRenderContext->PopRenderTargetAndViewport();
+	POP_VIEW( pRenderContext, GetFrustum() );
+}
+
+
+void DrawDebugEyeRenderTarget( CMatRenderContextPtr &pRenderContext, IMaterial* eyeMat, VREye eye )
+{
+	if ( eyeMat == NULL )
+		return;
+
+	VRViewParams viewParams = g_VR.GetViewParams();
+
+	// draw right eye
+	int width = viewParams.width * vr_dbg_rt_scale.GetFloat();
+	int height = viewParams.height * vr_dbg_rt_scale.GetFloat();
+
+	int posX = eye == VREye::Left ? 0 : width;
+	int posY = 0;
+
+	pRenderContext->DrawScreenSpaceRectangle(
+		eyeMat,
+		posX, posY,
+		width, height,
+		0, 0,
+		width-1, height-1,
+		width, height
+	);
 }
 
 
 void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudView, int nClearFlags, int whatToDraw )
 {
-#if ENGINE_QUIVER || ENGINE_ASW || ENGINE_CSGO
-	if ( /*m_bIsInEyeRender &&*/ (vr_dbg_rt_test.GetBool() || g_VR.active) )
+	if ( vr_dbg_rt_test.GetBool() || g_VR.active )
 	{
 		// VPROF_BUDGET( "CVRViewRender::RenderView", "CVRViewRender::RenderView" );
 
@@ -335,82 +376,22 @@ void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudVie
 
 		CMatRenderContextPtr pRenderContext( materials );
 
-		// draw main screen again
-		if ( vr_desktop_eye.GetInt() == 3 )
-		{
-			VRHostTracker* hmd = g_VR.GetHeadset();
-			CViewSetup tmp(view);
-			if ( hmd )
-			{
-				tmp.angles = hmd->ang;
-				tmp.angles.y += GetLocalVRPlayer()->viewOffset;
-				NormalizeAngles( tmp.angles );
-			}
-
-			BASE_RENDER_VIEW( tmp, hudView, nClearFlags, whatToDraw );
-		}
-
-		// pRenderContext->GetViewport( src.x, src.y, src.width, src.height );
-		// pRenderContext->SetRenderTarget( materials->FindTexture( "_rt_FullFrameFB", TEXTURE_GROUP_RENDER_TARGET ) );
-		// pRenderContext->Viewport( dst.x, dst.y, dst.width, dst.height );
-
 		RenderViewEye( pRenderContext, view, nClearFlags, leftEye, VREye::Left );
 		RenderViewEye( pRenderContext, view, nClearFlags, rightEye, VREye::Right );
 
-		// pRenderContext->SetRenderTarget( materials->FindTexture( "_rt_FullFrameFB", TEXTURE_GROUP_RENDER_TARGET ) );
-		// pRenderContext->Viewport( src.x, src.y, src.width, src.height );
-
-		if ( vr_dbg_rt.GetBool() )
+		// draw main screen
+		if ( vr_desktop_eye.GetInt() == 3 )
 		{
-			if ( leftEyeMat )
-			{
-				// draw left eye
-				int width = leftEye->GetActualWidth() / 2;
-				int height = leftEye->GetActualHeight() / 2;
+			CViewSetup desktopView(view);
 
-				pRenderContext->DrawScreenSpaceRectangle(
-					leftEyeMat,
-					0, 0,
-					width,
-					height,
-					0, 0,
-					width-1,
-					height-1,
-					width,
-					height
-				);
-			}
+			if ( vr_test_cam.GetBool() )
+				SetupCameraView( desktopView );
 
-			if ( rightEyeMat )
-			{
-				// draw right eye
-				int width = rightEye->GetActualWidth() / 2;
-				int height = rightEye->GetActualHeight() / 2;
-
-				// int posX = ScreenWidth() / 2 - width / 2;
-				// int posY = ScreenHeight() / 2 - height / 2;
-
-				int posX = width;
-				int posY = 0;
-
-				pRenderContext->DrawScreenSpaceRectangle(
-					rightEyeMat,
-					posX, posY,
-					width,
-					height,
-					0, 0,
-					width-1,
-					height-1,
-					width,
-					height
-				);
-			}
+			BASE_RENDER_VIEW( desktopView, desktopView, nClearFlags, whatToDraw );
 		}
-
-		// crop one of the eyes onto the screen
-#if 0
-		if ( vr_desktop_eye.GetInt() == 1 || vr_desktop_eye.GetInt() == 2 )
+		else if ( vr_desktop_eye.GetInt() == 1 || vr_desktop_eye.GetInt() == 2 )
 		{
+			// crop one of the eyes onto the screen (TODO: setup cropping for width just in case)
 			IMaterial* eyeMat = vr_desktop_eye.GetInt() == 1 ? leftEyeMat : rightEyeMat;
 			VRViewParams viewParams = g_VR.GetViewParams();
 
@@ -420,41 +401,32 @@ void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudVie
 			int eyeWidth = rightEye->GetActualWidth();
 			int eyeHeight = rightEye->GetActualHeight();
 
-			// definitely wrong, only accouning if the eye resolution is lower than the screen
-			// int widthOffset = (scrWidth - eyeWidth) / 2;
-			// int heightOffset = 0;
+			float scrAspect = (float)scrWidth / (float)scrHeight;
+			float eyeAspect = (float)eyeWidth / (float)eyeHeight;
 
-			float widthOffset = (1 - (scrWidth/scrHeight * viewParams.rtWidth / viewParams.rtHeight)) / 2;
-			// float heightOffset = desktopView == 3 ? 0.5 : 0;
-			float heightOffset = 0.0f;
+			float heightOffsetMult = (1.0 - (scrAspect * eyeAspect)); //  / 2.0;
+			float heightOffset = (eyeHeight *- heightOffsetMult) / 2.0;
 
-			// now draw over entire screen
+			// now crop this to the entire screen
 			pRenderContext->DrawScreenSpaceRectangle(
 				eyeMat,
 				0, 0,
 				scrWidth, scrHeight,
-				widthOffset, heightOffset,
-				eyeWidth-1, eyeHeight-1,
+				0, heightOffset,
+				eyeWidth-1, eyeHeight-1 - heightOffset,
 				eyeWidth, eyeHeight
 			);
 		}
-#endif
+
+		if ( vr_dbg_rt.GetBool() )
+		{
+			DrawDebugEyeRenderTarget( pRenderContext, leftEyeMat, VREye::Left );
+			DrawDebugEyeRenderTarget( pRenderContext, rightEyeMat, VREye::Right );
+		}
 	}
 	else
-	#endif
 	{
-		#if ENGINE_OLD
-			BaseViewRender::RenderView( view, nClearFlags, whatToDraw );
-
-			if ( vr_desktop_simulate_perf.GetBool() )
-				BaseViewRender::RenderView( view, nClearFlags, whatToDraw );
-		#else
-			BaseViewRender::RenderView( view, view, nClearFlags, whatToDraw );
-
-			if ( vr_desktop_simulate_perf.GetBool() )
-				BaseViewRender::RenderView( view, view, nClearFlags, whatToDraw );
-		#endif
+		BASE_RENDER_VIEW( view, view, nClearFlags, whatToDraw );
 	}
 }
-
 

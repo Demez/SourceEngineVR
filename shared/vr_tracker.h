@@ -25,6 +25,19 @@ enum class EVRTracker
     HIP,
     LFOOT,
     RFOOT,
+
+    /*
+    // TODO: set these up later
+    LKNEE,
+    RKNEE,
+    LELBOW,
+    RELBOW,
+    LSHOULDER,
+    RSHOULDER,
+    SPINE,
+    CHEST,
+    */
+    
     COUNT = RFOOT
 };
 

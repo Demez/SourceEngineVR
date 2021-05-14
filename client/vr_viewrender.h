@@ -33,6 +33,11 @@ public:
 
 	virtual void PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &screenView, VREye eye );
 
+	// will extend this into it's own class, so you can pickup and move the camera around
+	// might need to have that be an entity to make it easy though
+	// unless i create a custom vr item pickup class for local use only
+	virtual void SetupCameraView( CViewSetup &camView );
+
 	virtual void UpdateEyeRenderTargets();
 	virtual void InitEyeRenderTargets();
 	virtual void InitEyeMats();

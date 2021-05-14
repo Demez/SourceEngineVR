@@ -46,16 +46,21 @@ public:
 
 	CVRGameMovement();
 
-	CVRMoveData*            GetVRMoveData();
-	CVRBasePlayer*          GetVRPlayer();
+	CVRMoveData*                    GetVRMoveData();
+	CVRBasePlayer*                  GetVRPlayer();
 
-	virtual void            ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove );
-	virtual void            PlayerMove();
+	virtual const Vector&           GetPlayerMins( bool ducked ) const;
+	virtual const Vector&           GetPlayerMaxs( bool ducked ) const;
+	virtual const Vector&           GetPlayerMins() const;
+	virtual const Vector&           GetPlayerMaxs() const;
 
-	virtual void            HandlePlaySpaceMovement( CVRMoveData *pMove );
-	virtual void            ProcessVRMovement( CVRBasePlayerShared *pPlayer, CVRMoveData *pMove );
+	virtual void                    ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove );
+	virtual void                    PlayerMove();
 
-	Vector					m_viewOriginOffset; // offset of view based on where bbox is
+	virtual void                    HandlePlaySpaceMovement( CVRMoveData *pMove );
+	virtual void                    ProcessVRMovement( CVRBasePlayerShared *pPlayer, CVRMoveData *pMove );
+
+	Vector					        m_viewOriginOffset; // offset of view based on where bbox is
 };
 
 

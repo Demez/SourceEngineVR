@@ -22,30 +22,6 @@ ConVar vr_interp_trackers("vr_interp_trackers", "0.1");
 #define TRACKER_MODEL "models/props_junk/PopCan01a.mdl"
 
 
-#if 0
-#ifdef CLIENT_DLL
-BEGIN_PREDICTION_DATA( CVRTracker )
-END_PREDICTION_DATA()
-
-#undef CVRTracker
-
-IMPLEMENT_CLIENTCLASS_DT( C_VRTracker, DT_VRTracker, CVRTracker )
-    RecvPropInt( RECVINFO(m_type) ),
-END_RECV_TABLE()
-
-#define CVRTracker C_VRTracker
-
-#else
-
-IMPLEMENT_SERVERCLASS_ST( CVRTracker, DT_VRTracker )
-    SendPropInt( SENDINFO(m_type), -1, SPROP_UNSIGNED ),
-END_SEND_TABLE()
-
-LINK_ENTITY_TO_CLASS( vr_tracker, CVRTracker );
-#endif
-#endif
-
-
 // ==============================================================
 
 
@@ -56,7 +32,7 @@ const char* g_trackerNames[g_trackerCount] =
     "hmd",
     "pose_lefthand",
     "pose_righthand",
-    "pose_hip",
+    "pose_waist",
     "pose_leftfoot",
     "pose_rightfoot",
 };
@@ -254,9 +230,9 @@ void CVRTracker::UpdateTracker(CmdVRTracker& cmdTracker)
 
 #ifdef CLIENT_DLL
     if ( !IsHeadset() )
-        NDebugOverlay::Axis( GetAbsOrigin(), GetAbsAngles(), 5, false, 0.0f );
+        NDebugOverlay::Axis( GetAbsOrigin(), GetAbsAngles(), 5, true, 0.0f );
 
-    NDebugOverlay::Text( GetAbsOrigin(), m_trackerName, false, 0.0f );
+    NDebugOverlay::Text( GetAbsOrigin(), m_trackerName, true, 0.0f );
 #endif
 
 }

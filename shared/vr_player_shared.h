@@ -46,6 +46,14 @@ public:
 
 	virtual void                    PreThink();
 
+	virtual Vector                  Weapon_ShootPosition();
+
+	virtual const Vector            GetPlayerMins(); // NOTE: need to change in base code to be not const
+	virtual const Vector            GetPlayerMaxs(); // NOTE: need to change in base code to be not const
+	virtual void                    CalculatePlayerBBox();
+	virtual Vector                  EyePosition();
+	virtual const QAngle&           EyeAngles();
+
 	virtual void                    HandleVRMoveData();
 	virtual void                    UpdateTrackers();
 
@@ -77,6 +85,9 @@ public:
 	// network this? only used on the client at the moment
 	QAngle m_vrViewAngles;
 	Vector m_viewOriginOffset;  // calculated from vr_gamemovement.cpp
+
+	Vector m_minSize;
+	Vector m_maxSize;
 
 friend class CVRGameMovement;
 };

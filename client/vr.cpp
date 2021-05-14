@@ -24,14 +24,6 @@
 #include <d3d9.h>
 #include <d3d11.h>
 
-#ifdef GetObject
-#undef GetObject
-#endif
-
-#ifdef CreateEvent
-#undef CreateEvent
-#endif
-
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -39,8 +31,14 @@ ConVar vr_autostart("vr_autostart", "0", FCVAR_ARCHIVE, "auto start vr on level 
 ConVar vr_active_hack("vr_active_hack", "0", FCVAR_CLIENTDLL, "lazy hack for anything that needs to know if vr is enabled outside of the game dlls (mouse lock)");
 ConVar vr_clamp_res("vr_clamp_res", "1", FCVAR_CLIENTDLL, "clamp the resolution to the screen size until the render clamping issue is figured out");
 ConVar vr_scale_override("vr_scale_override", "42.5");  // anything lower than 0.25 doesn't look right in the headset
+ConVar vr_dbg_rt_res("vr_dbg_rt_res", "2048", FCVAR_CLIENTDLL);
+ConVar vr_eye_height("vr_eye_h", "0", FCVAR_CLIENTDLL, "Override the render target height, 0 to disable");
+ConVar vr_eye_width("vr_eye_w", "0", FCVAR_CLIENTDLL, "Override the render target width, 0 to disable");
 
+extern ConVar vr_dbg_rt_test;
 extern ConVar vr_scale;
+
+extern ConVar mat_postprocess_enable;
 
 
 VRSystem                    g_VR;
@@ -138,6 +136,9 @@ public float hmd_SecondsFromVsyncToPhotons { get { return GetFloatProperty(ETrac
 public float hmd_DisplayFrequency { get { return GetFloatProperty(ETrackedDeviceProperty.Prop_DisplayFrequency_Float); } }
 */
 
+// this actually works just fine so
+#pragma warning( push )
+#pragma warning( disable : 4172 )
 
 const char* VRSystem::GetTrackingPropString( vr::ETrackedDeviceProperty prop, uint deviceId )
 {
@@ -156,6 +157,7 @@ const char* VRSystem::GetTrackingPropString( vr::ETrackedDeviceProperty prop, ui
     return value;
 }
 
+#pragma warning( pop )
 
 const char* VRSystem::GetHeadsetTrackingSystemName()
 {
@@ -272,7 +274,12 @@ bool VRSystem::Init()
 void VRSystem::Update( float frametime )
 {
 	if ( !active )
-		return;
+    {
+        if ( vr_dbg_rt_test.GetBool() )
+            UpdateViewParams();
+
+        return;
+    }
 
 	UpdateViewParams();
     g_VRInt.WaitGetPoses();
@@ -487,9 +494,19 @@ void VRSystem::UpdateViewParams()
 
     uint32_t width = 0;
     uint32_t height = 0;
-    g_pOVR->GetRecommendedRenderTargetSize(&width, &height);
 
-    if ( vr_clamp_res.GetBool() )
+    if ( active )
+    {
+        g_pOVR->GetRecommendedRenderTargetSize(&width, &height);
+    }
+    else
+    {
+        width = vr_dbg_rt_res.GetInt();
+        height = vr_dbg_rt_res.GetInt();
+    }
+
+    // not needed anymore
+    /*if ( vr_clamp_res.GetBool() )
     {
         int scrWidth, scrHeight;
         vgui::surface()->GetScreenSize( scrWidth, scrHeight );
@@ -508,14 +525,26 @@ void VRSystem::UpdateViewParams()
                 width += 1;
             }
         }
-    }
+    }*/
+
+    if ( vr_eye_height.GetFloat() > 0 )
+        viewParams.height = vr_eye_height.GetFloat();
+
+    if ( vr_eye_width.GetFloat() > 0 )
+        viewParams.width = vr_eye_width.GetFloat();
+
+    if ( vr_eye_width.GetFloat() > 0 || vr_eye_height.GetFloat() > 0 )
+        viewParams.aspect = (float)viewParams.width / (float)viewParams.height;
 
     viewParams.width = width;
     viewParams.height = height;
 
-	// uhh
-    g_VRInt.CalcTextureBounds( viewParams.aspect, viewParams.fov );
-    GetFOVOffset( VREye::Left, viewParams.aspect, viewParams.fov );
+    if ( active )
+    {
+        // uhh
+        g_VRInt.CalcTextureBounds( viewParams.aspect, viewParams.fov );
+        GetFOVOffset( VREye::Left, viewParams.aspect, viewParams.fov );
+    }
 
     viewParams.aspect = (float)viewParams.width / (float)viewParams.height;
 
@@ -527,6 +556,9 @@ VRViewParams VRSystem::GetViewParams()
 {
 	return m_currentViewParams;
 }
+
+
+static bool g_wasPostProcessingOn = false;
 
 
 bool VRSystem::Enable()
@@ -563,6 +595,8 @@ bool VRSystem::Enable()
     // convienence
     engine->ClientCmd_Unrestricted("engine_no_focus_sleep 0");
     vr_active_hack.SetValue("1");
+    g_wasPostProcessingOn = mat_postprocess_enable.GetBool();
+    mat_postprocess_enable.SetValue("0");
 
 	Update( 0.0 );
 	return true;
@@ -598,6 +632,7 @@ bool VRSystem::Disable()
     // i would save the old value, but nobody changes this anyway
     engine->ClientCmd_Unrestricted("engine_no_focus_sleep 50");
     vr_active_hack.SetValue("0");
+    mat_postprocess_enable.SetValue( g_wasPostProcessingOn );
 
 	return true;
 }
@@ -617,7 +652,11 @@ bool VRSystem::IsDX11()
 
 bool VRSystem::NeedD3DInit()
 {
+#if ENGINE_ASW
+    return false;
+#else
 	return IsDX11() ? false : (g_VRInt.d3d9Device == NULL || g_VRInt.d3d11TextureL == NULL || g_VRInt.d3d11TextureR == NULL);
+#endif
 }
 
 

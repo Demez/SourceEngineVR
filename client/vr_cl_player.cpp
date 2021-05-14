@@ -11,6 +11,7 @@
 #include "vphysics/constraints.h"
 #include "bone_setup.h"
 #include "solidsetdefaults.h"
+#include "tier1/fmtstr.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -25,6 +26,8 @@ extern ConVar vr_scale;
 ConVar vr_fov_override( "vr_fov_override", "0", FCVAR_CLIENTDLL );
 ConVar vr_disable_eye_ang( "vr_disable_eye_ang", "0", FCVAR_CLIENTDLL );
 ConVar vr_cl_interp( "vr_interp_player", "0.1", FCVAR_CLIENTDLL );
+ConVar vr_cl_hidehead( "vr_cl_hidehead", "15", FCVAR_CLIENTDLL, "Distance to hide the head by, 0 or keeps the head always visible" );
+ConVar vr_cl_headdist( "vr_cl_headdist", "-15", FCVAR_CLIENTDLL, "Distance to offset the head back by" );
 
 #if defined( CVRBasePlayer )
 	#undef CVRBasePlayer	
@@ -54,6 +57,63 @@ ConVar cl_meathook_neck_pivot_ingame_fwd( "cl_meathook_neck_pivot_ingame_fwd", "
 C_VRBasePlayer* GetLocalVRPlayer()
 {
 	return (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
+}
+
+
+void RotateAroundAxis( QAngle& angles, const Vector axis, float degrees )
+{
+	/*Vector vectorOfRotation(axis);
+	Vector axisOfRotation = Vector(
+	1 - vec.x,
+	1 - vec.y,
+	1 - vec.z
+	).Normalized(); // flip axes and normalize
+	QAngle rotation(axisOfRotation * 90);
+
+	angle = rotation;*/
+
+	VMatrix mat, rotateMat, outMat;
+	MatrixFromAngles( angles, mat );
+	MatrixBuildRotationAboutAxis( rotateMat, axis, degrees );
+	MatrixMultiply( mat, rotateMat, outMat );
+	MatrixToAngles( outMat, angles );
+
+	// Vector outMatPos;
+	// MatrixGetColumn( outMat.As3x4(), 3, outMatPos );
+	// NDebugOverlay::Axis( outMatPos, angles, 5.0f, true, 0.0f );
+
+
+	/*VMatrix mat;
+	AngleMatrix( angles, mat.As3x4() );
+	MatrixBuildRotationAboutAxis( mat, axis, degrees );
+
+	// MatrixAngles( mat.As3x4(), angle );
+	MatrixToAngles( mat, angles );*/
+
+	// Vector rotate;
+	// VectorYawRotate( direction, degrees, rotate );
+
+	// VectorAngles( rotate, angle );
+}
+
+
+void RotateAroundAxisForward( QAngle& angle, float degrees )
+{
+	Vector forward;
+	AngleVectors( angle, &forward );
+
+	RotateAroundAxis( angle, forward, degrees );
+	// RotateAroundAxis( angle, Vector( 1, 0, 0 ), degrees );
+}
+
+
+void RotateAroundAxisUp( QAngle& angle, float degrees )
+{
+	Vector direction;
+	AngleVectors( angle, NULL, NULL, &direction );
+
+	RotateAroundAxis( angle, direction, degrees );
+	// RotateAroundAxis( angle, Vector( 0, 0, 1 ), degrees );
 }
 
 
@@ -102,6 +162,8 @@ void CVRBoneInfo::InitShared( C_VRBasePlayer* pPlayer, CStudioHdr* hdr )
 	hasNewAngles = false;
 	hasNewPos = false;
 	hasNewCoord = false;
+	setAsTargetAngle = false;
+	drawChildAxis = false;
 	newAngles.Init();
 }
 
@@ -249,58 +311,6 @@ float C_VRBasePlayer::GetFOV()
 	else
 	{
 		return BaseClass::GetFOV();
-	}
-}
-
-
-// this is stupid
-Vector C_VRBasePlayer::EyePosition()
-{
-	if ( m_bInVR )
-	{
-		CVRTracker* hmd = GetHeadset();
-		if ( hmd == NULL )
-			return BaseClass::EyePosition();
-
-		Vector basePos = GetAbsOrigin();
-		basePos += m_viewOriginOffset;
-		// basePos.z += hmd->m_pos.z;
-
-		return basePos;
-	}
-	else
-	{
-		return BaseClass::EyePosition();
-	}
-}
-
-
-const QAngle &C_VRBasePlayer::EyeAnglesNoOffset()
-{
-	if ( m_bInVR )
-	{
-		CVRTracker* headset = GetHeadset();
-		if ( headset == NULL )
-			return BaseClass::EyeAngles();
-
-		return headset->m_ang;
-	}
-	else
-	{
-		return BaseClass::EyeAngles();
-	}
-}
-
-
-const QAngle &C_VRBasePlayer::EyeAngles()
-{
-	if ( m_bInVR )
-	{
-		return m_vrViewAngles;
-	}
-	else
-	{
-		return BaseClass::EyeAngles();
 	}
 }
 
@@ -498,9 +508,6 @@ void C_VRBasePlayer::SetupConstraints()
 // goes through each child of the bone and apply's transformations to that
 void C_VRBasePlayer::RecurseApplyBoneTransforms( CVRBoneInfo* boneInfo )
 {
-	// matrix3x4_t &bone = boneInfo->GetBoneForWrite();
-	// matrix3x4_t &parentBone = boneInfo->GetParentBoneForWrite();
-
 	matrix3x4_t &boneWrite = boneInfo->GetBoneForWrite();
 	matrix3x4_t &parentBoneWrite = boneInfo->GetParentBoneForWrite();
 
@@ -519,82 +526,83 @@ void C_VRBasePlayer::RecurseApplyBoneTransforms( CVRBoneInfo* boneInfo )
 		matrix3x4_t local;
 		ConcatTransforms( worldToBone, boneInfo->newCoord, local );
 #endif
-
-		// uh
 		Vector bonePos;
 		QAngle localAngles;
 		MatrixAngles( local, localAngles );
-		// MatrixGetColumn( local, 3, bonePos );
 		MatrixGetColumn( local, 3, bonePos );
 
 		if ( boneInfo->hasNewAngles )
 		{
 			// not correct yet, and the tracker hand angles are rotating with the view offset?
 			// not good for this
-			AngleMatrix( boneInfo->m_relAng /*+ boneInfo->newAngles*/, bonePos, local );
+			// AngleMatrix( boneInfo->m_relAng + boneInfo->newAngles, bonePos, local );
 		}
 		else
 		{
 			AngleMatrix( localAngles + boneInfo->newAngles, bonePos, local );
 		}
 
-
-
-		/*matrix3x4_t matBoneToParent, matNewBoneCoord;
-		QAngle newAngles( boneInfo->m_relAng + localAngles + boneInfo->newAngles );
-		NormalizeAngles( newAngles );
-
-		AngleMatrix( newAngles, matBoneToParent );
-		MatrixSetColumn( boneInfo->m_relPos, 3, matBoneToParent );*/
-
 		ConcatTransforms( parentBoneWrite, local, boneWrite );
 
+		if ( boneInfo->hasNewAngles )
+		{
+			MatrixGetColumn( boneWrite, 3, bonePos );
+			AngleMatrix( boneInfo->newAngles, bonePos, boneWrite );
+		}
 
+		if ( boneInfo->drawChildAxis )
+		{
+			Vector origin;
+			QAngle angles;
+			MatrixAngles( boneWrite, angles );
+			MatrixGetColumn( boneWrite, 3, origin );
 
-		// matrix3x4_t tmpBoneCoord(boneWrite);
-		// LocalToWorld( tmpBoneCoord, bonePos, newAngle, boneWrite );
-
-		// AngleMatrix( newAngle, bonePos, boneWrite );
-		// MatrixCopy( local, boneWrite );
+			// NDebugOverlay::Axis( origin, boneInfo->newAngles, 2.5f, true, 0.0f );
+			// NDebugOverlay::Text( origin, boneInfo->name, true, 0.0f );
+		}
 	}
 	else
 	{
 		matrix3x4_t matBoneToParent, matNewBoneCoord;
-		QAngle newAngles(boneInfo->m_relAng + boneInfo->newAngles);
+
+		QAngle newAngles( boneInfo->m_relAng + boneInfo->newAngles );
+
+		// hmm
+		// if ( boneInfo->setAsTargetAngle )
+		if ( boneInfo->hasNewAngles )
+		 	newAngles = QAngle( boneInfo->newAngles );
+
 		NormalizeAngles( newAngles );
 
 		AngleMatrix( newAngles, matBoneToParent );
 		MatrixSetColumn( boneInfo->m_relPos, 3, matBoneToParent );
 
 		ConcatTransforms( parentBoneWrite, matBoneToParent, boneWrite );
+
+		if ( boneInfo->hasNewAngles )
+		{
+			Vector pos;
+			MatrixGetColumn( boneWrite, 3, pos );
+			AngleMatrix( boneInfo->newAngles, pos, boneWrite );
+		}
+
+		if ( boneInfo->drawChildAxis )
+		{
+			Vector origin;
+			QAngle angles;
+			MatrixAngles( boneWrite, angles );
+			MatrixGetColumn( boneWrite, 3, origin );
+
+			//NDebugOverlay::Axis( origin, angles, 2.5f, true, 0.0f );
+			//NDebugOverlay::Text( origin, boneInfo->name, true, 0.0f );
+		}
 	}
 
-	// MatrixAngles( local,)
-	// MatrixAngles( local, q[iBone], pos[iBone] );
-
-
-
-	/*matrix3x4_t matBoneToParent, matNewBoneCoord;
-	QAngle newAngles(boneInfo->m_relAng + boneInfo->newAngles);
-	NormalizeAngles( newAngles );
-
-	AngleMatrix( newAngles, matBoneToParent );
-	MatrixSetColumn( boneInfo->m_relPos, 3, matBoneToParent );
-
-	ConcatTransforms( parentBone, matBoneToParent, bone );*/
-
-	/*{
-		Vector bonePos;
-		QAngle boneAng;
-		MatrixGetColumn( bone, 3, bonePos );
-		MatrixAngles( bone, boneAng );
-
-		// NDebugOverlay::Axis( bonePos, boneAng, 5, false, 0.0f );
-		// NDebugOverlay::Text( bonePos, boneInfo->name, false, 0.0f );
-	}*/
-
-	for (int i = 0; i < boneInfo->childBones.Count(); i++)
+	for ( int i = 0; i < boneInfo->childBones.Count(); i++ )
 	{
+		// if ( boneInfo->drawChildAxis )
+		// 	boneInfo->childBones[i]->drawChildAxis = false;
+
 		RecurseApplyBoneTransforms( boneInfo->childBones[i] );
 	}
 }
@@ -612,25 +620,42 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 	MatrixAngles( newTransform, cameraAngles );
 	MatrixGetColumn( newTransform, 3, cameraOrigin );
 
+	cameraAngles.x = 0.0;
+	// cameraAngles.y = 0.0;
 	cameraAngles.z = 0.0;
+
+	// cameraOrigin.z -= 40;
 	
 	AngleMatrix( cameraAngles, newTransform );
-	MatrixSetColumn( cameraOrigin, 3, newTransform );
 
-	BaseClass::BuildTransformations( hdr, pos, q, newTransform, boneMask, boneComputed );
-
-	if( !m_bInVR )
+	if ( !m_bInVR )
+	{
+		MatrixSetColumn( cameraOrigin, 3, newTransform );
+		BaseClass::BuildTransformations( hdr, pos, q, newTransform, boneMask, boneComputed );
 		return;
+	}
 
 	UpdateBoneInformation( hdr );
+
+	m_BoneAccessor.SetWritableBones( BONE_USED_BY_ANYTHING );
+
+	CVRTracker* hmd = GetHeadset();
+
+	if ( hmd )
+	{
+		// TODO: calculate distance from head bone (or forward bone?) to the player origin
+		// just using a funny magic number for now
+		cameraOrigin.z += -66 + hmd->m_pos.z;
+	}
+
+	MatrixSetColumn( cameraOrigin, 3, newTransform );
+	BaseClass::BuildTransformations( hdr, pos, q, newTransform, boneMask, boneComputed );
 
 	for (int i = 0; i < m_boneInfoList.Count(); i++)
 	{
 		CVRBoneInfo* boneInfo = m_boneInfoList[i];
 		boneInfo->CalcRelativeCoord();
 	}
-
-	m_BoneAccessor.SetWritableBones( BONE_USED_BY_ANYTHING );
 
 	for (int i = 0; i < m_VRTrackers.Count(); i++)
 	{
@@ -639,11 +664,39 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 		if ( !pTracker->m_bInit )
 			continue;
 
-		if (pTracker->IsHeadset())
+		if ( pTracker->IsHeadset() )
 		{
 			CVRBoneInfo* mainBoneInfo = GetBoneInfo( LookupBone( pTracker->GetBoneName() ) );
 			if ( mainBoneInfo )
-				mainBoneInfo->SetCustomAngles( pTracker->GetAbsAngles() );
+			{
+				QAngle adjustedAngles = pTracker->GetAbsAngles();
+				RotateAroundAxis( adjustedAngles, Vector(1, 0, 0), 90 );
+				RotateAroundAxis( adjustedAngles, Vector(0, 0, 1), 75 );
+
+				mainBoneInfo->SetCustomAngles( adjustedAngles );
+				mainBoneInfo->setAsTargetAngle = true;
+				mainBoneInfo->drawChildAxis = true;
+
+				if ( IsLocalPlayer() && vr_cl_hidehead.GetFloat() > 0.0f )
+				{
+					matrix3x4_t &headTransform = mainBoneInfo->GetBoneForWrite();
+
+					Vector headPos;
+					MatrixGetColumn( headTransform, 3, headPos );
+
+					// have the head be visible if far away enough
+					// though this might vary per model, idk
+					float dist = pTracker->GetAbsOrigin().DistTo( headPos );
+					if ( dist < vr_cl_hidehead.GetFloat() )
+					{
+						MatrixScaleByZero( headTransform );
+					}
+				}
+				else
+				{
+					// somehow push the head back with vr_cl_headdist, along with other bones?
+				}
+			}
 
 			// BuildFirstPersonMeathookTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, "ValveBiped.Bip01_Head1" );
 		}
@@ -651,7 +704,7 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 		{
 			BuildTrackerTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, pTracker );
 
-			if (pTracker->IsHand())
+			if ( pTracker->IsHand() )
 			{
 				// BuildFingerTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, (CVRController*)pTracker );
 			}
@@ -666,6 +719,46 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 			continue;
 
 		RecurseApplyBoneTransforms( GetRootBoneInfo( pTracker ) );
+	}
+
+	if ( !hmd )
+		return;
+
+	// offset the entire skeleton by vr_cl_headdist
+	float offsetDist = vr_cl_headdist.GetFloat();
+	CVRBoneInfo* mainBoneInfo = GetBoneInfo( LookupBone( hmd->GetBoneName() ) );
+
+	matrix3x4_t& headBone = mainBoneInfo->GetBoneForWrite();
+	Vector headPos;
+	MatrixGetColumn( headBone, 3, headPos );
+
+	QAngle headAng;
+	MatrixAngles( headBone, headAng );
+
+	// NDebugOverlay::Axis( headPos, headAng, 5.0f, true, 0.0f );
+
+	// AngleMatrix( hmd->GetAbsAngles(), headPos, headBone );
+
+	// QAngle headAng;
+	// MatrixAngles( headBone, headAng );
+
+	Vector forward;
+	AngleVectors( hmd->GetAbsAngles(), &forward );
+
+	for (int i = 0; i < hdr->numbones(); i++)
+	{
+		// Only update bones reference by the bone mask.
+		/*if ( !( hdr->boneFlags( i ) & boneMask ) )
+		{
+			continue;
+		}*/
+		matrix3x4_t& bone = GetBoneForWrite( i );
+		Vector vBonePos;
+		MatrixGetColumn( bone, 3, vBonePos );
+
+		// vBonePos += forward * offsetDist;
+		vBonePos.z += -72 + hmd->m_pos.z;
+		// MatrixSetColumn( vBonePos, 3, bone );
 	}
 }
 
@@ -861,7 +954,7 @@ void C_VRBasePlayer::BuildTrackerTransformations( CStudioHdr *hdr, Vector *pos, 
 	CVRBoneInfo* mainBoneInfo = GetBoneInfo( iMainBone );
 	CVRBoneInfo* rootBoneInfo = GetBoneInfo( iRootBone );
 
-	mainBoneInfo->SetCustomAngles( pTracker->GetAbsAngles() );
+	// mainBoneInfo->SetCustomAngles( pTracker->GetAbsAngles() );
 
 	if ( !rootBoneInfo )
 	{
@@ -871,6 +964,7 @@ void C_VRBasePlayer::BuildTrackerTransformations( CStudioHdr *hdr, Vector *pos, 
 	if ( pTracker->IsHand() )
 	{
 		// BuildArmTransform( hdr, pTracker, rootBoneInfo );
+		// return;
 
 		CVRBoneInfo* upperArmInfo;
 		CVRBoneInfo* foreArmInfo;
@@ -892,7 +986,10 @@ void C_VRBasePlayer::BuildTrackerTransformations( CStudioHdr *hdr, Vector *pos, 
 			mainBoneInfo->GetBoneForWrite()
 		};
 
-		Vector targetHand;
+		Vector handBonePos;
+		MatrixGetColumn( pBoneToWorld[2], 3, handBonePos );
+		// AngleMatrix( pTracker->GetAbsAngles(), handBonePos, pBoneToWorld[2] ); 
+
 		bool hmm = Studio_SolveIK( 0, 1, 2, pTracker->GetAbsOrigin(), pBoneToWorld );
 
 		Vector plyRight;
@@ -950,50 +1047,6 @@ void C_VRBasePlayer::BuildTrackerTransformations( CStudioHdr *hdr, Vector *pos, 
 }
 
 
-void RotateAroundAxis( QAngle& angle, Vector axis, float degrees )
-{
-	/*Vector vectorOfRotation(axis);
-	Vector axisOfRotation = Vector(
-		1 - vec.x,
-		1 - vec.y,
-		1 - vec.z
-	).Normalized(); // flip axes and normalize
-	QAngle rotation(axisOfRotation * 90);
-
-	angle = rotation;*/
-
-	VMatrix mat;
-	AngleMatrix( angle, mat.As3x4() );
-	MatrixBuildRotationAboutAxis( mat, axis, degrees );
-
-	// MatrixAngles( mat.As3x4(), angle );
-	MatrixToAngles( mat, angle );
-
-	// Vector rotate;
-	// VectorYawRotate( direction, degrees, rotate );
-
-	// VectorAngles( rotate, angle );
-}
-
-
-void RotateAroundAxisForward( QAngle& angle, float degrees )
-{
-	Vector forward;
-	AngleVectors( angle, &forward );
-
-	RotateAroundAxis( angle, forward, degrees );
-}
-
-
-void RotateAroundAxisUp( QAngle& angle, float degrees )
-{
-	Vector direction;
-	AngleVectors( angle, NULL, NULL, &direction );
-
-	RotateAroundAxis( angle, direction, degrees );
-}
-
-
 // copied from gmod vr lol
 void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, CVRBoneInfo* clavicleBoneInfo )
 {
@@ -1002,7 +1055,11 @@ void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, C
 	Vector plyRight;
 	AngleVectors( plyAng, NULL, &plyRight, NULL );
 
-	
+	engine->Con_NPrintf( 10, "Player Angles: %s\n", VecToString(plyAng) );
+	engine->Con_NPrintf( 11, "Player Right: %s\n", VecToString(plyRight) );
+
+	// NDebugOverlay::Line( GetAbsOrigin() + Vector(0, 0, 48), GetAbsOrigin() + Vector(0, 0, 48) + (plyRight * 8), 5, 205, 250, true, 0.0f );
+	// NDebugOverlay::Axis( GetAbsOrigin() + plyRight + Vector(0, 0, 48), plyAng, 4.0f, true, 0.0f );
 
 	// if ( pTracker->IsLeftHand() )
 	//  	plyRight -= plyRight;
@@ -1015,8 +1072,18 @@ void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, C
 	// -------------------------------------
 	// calc target angle for clavicle
 
-	Vector shoulderPosNeutral = vClaviclePos + plyRight *- clavicleBoneInfo->dist;
-	Vector shoulderPos = shoulderPosNeutral + (pTracker->GetAbsOrigin() - shoulderPosNeutral) * 0.15;  // desired shoulder position
+	Vector shoulderPos;  // desired shoulder position
+
+	if ( pTracker->IsLeftHand() )
+	{
+		Vector shoulderPosNeutral = vClaviclePos + plyRight *- clavicleBoneInfo->dist;
+		shoulderPos = shoulderPosNeutral + (pTracker->GetAbsOrigin() - shoulderPosNeutral) * 0.15;
+	}
+	else
+	{
+		Vector shoulderPosNeutral = vClaviclePos + plyRight * clavicleBoneInfo->dist;
+		shoulderPos = shoulderPosNeutral + (pTracker->GetAbsOrigin() - shoulderPosNeutral) * 0.15;
+	}
 
 	QAngle clavicleTargetAng;
 
@@ -1028,9 +1095,19 @@ void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, C
 	{
 	}
 
-	RotateAroundAxisForward( clavicleTargetAng, 90 );
+	// engine->Con_NPrintf( 12, "clavicleTargetAng pre rotate: %s\n", VecToString(clavicleTargetAng) );
+
+	Vector clavicleTargetAngForward;
+	AngleVectors( clavicleTargetAng, &clavicleTargetAngForward );
+//	NDebugOverlay::Line( shoulderPos, shoulderPos + (Vector(1, 0, 0) * 8), 5, 205, 250, true, 0.0f );
+
+//	NDebugOverlay::Axis( shoulderPos, clavicleTargetAng, 5.0f, true, 0.0f );
+
+	RotateAroundAxis( clavicleTargetAng, Vector(1, 0, 0), 90 );
+	// RotateAroundAxisForward( clavicleTargetAng, -90 );
 	// RotateAroundAxisUp( clavicleTargetAng, 90 );
 	// AngleMatrix( clavicleTargetAng, vClaviclePos, clavicleBone );
+
 	clavicleBoneInfo->SetCustomAngles( clavicleTargetAng );
 
 	// -------------------------------------
@@ -1052,11 +1129,15 @@ void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, C
 
 	QAngle upperarmTargetAng(targetVecAng);
 
+	//if ( pTracker->IsRightHand() )
+	//	RotateAroundAxis( upperarmTargetAng, vTargetVec, 180 );
+
 	QAngle tmp;
 	if ( !IsInAVehicle() )
 	{
 		// 2nd argument is something calculated value in gmod vr
-		tmp.Init(targetVecAng.x, pTracker->GetAbsAngles().y, -90);
+		// tmp.Init( targetVecAng.x, pTracker->GetAbsAngles().y, pTracker->IsLeftHand() ? -90 : 90 );
+		tmp.Init( targetVecAng.x, plyAng.y, pTracker->IsLeftHand() ? -90 : 90 );
 	}
 	else
 	{
@@ -1069,7 +1150,8 @@ void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, C
 	WorldToLocal( vec3_origin, tmp, vec3_origin, targetVecAng, testPos, testAngle );
 
 	float degrees = testAngle.z;
-	RotateAroundAxisForward( upperarmTargetAng, degrees );
+	// RotateAroundAxisForward( upperarmTargetAng, degrees );
+	RotateAroundAxis( upperarmTargetAng, Vector(1, 0, 0), degrees );
 
 	// uh
 	CVRBoneInfo* infoUpperArm = NULL;
@@ -1092,7 +1174,8 @@ void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, C
 
 	float tmpCosValue = (Sqr(infoUpperArm->dist) + Sqr(vTargetVec.Length()) - Sqr(infoLowerArm->dist)) / (2 * infoUpperArm->dist * vTargetVec.Length());
 	float finalRotationValue = RAD2DEG( acos(tmpCosValue) );
-	RotateAroundAxisUp( upperarmTargetAng, tmpCosValue );
+	// RotateAroundAxisUp( upperarmTargetAng, tmpCosValue );
+	// RotateAroundAxis( upperarmTargetAng, Vector(0, 0, 1), finalRotationValue );
 
 	// vehicle check
 	float zTest = ((pTracker->GetAbsOrigin().z - (vUpperarmPos.z)) + 20) *1.5;
@@ -1105,9 +1188,11 @@ void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, C
 	else
 		zTest = -(30 + zTest);
 
-	RotateAroundAxis( upperarmTargetAng, pTracker->GetAbsOrigin().Normalized(), zTest );
+	// RotateAroundAxis( upperarmTargetAng, pTracker->GetAbsOrigin().Normalized(), zTest );
 
 	// infoUpperArm->SetCustomAngles( upperarmTargetAng );
+
+	// NDebugOverlay::Axis( shoulderPos, upperarmTargetAng, 5.0f, true, 0.0f );
 
 	QAngle forearmTargetAng(upperarmTargetAng);
 
@@ -1115,6 +1200,9 @@ void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, C
 	float finalLowerRotationValue = 180 - finalRotationValue - RAD2DEG( acos(tmpCosValueLower) );
 
 	// infoLowerArm->SetCustomAngles( upperarmTargetAng );
+	// infoLowerArm->SetCustomAngles( forearmTargetAng );
+
+	// NDebugOverlay::Axis( shoulderPos, upperarmTargetAng, 5.0f, true, 0.0f );
 
 
 }

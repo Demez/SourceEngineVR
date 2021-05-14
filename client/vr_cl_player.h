@@ -28,6 +28,7 @@ struct CVRBoneInfo
 	void CalcRelativeCoord();
 	bool HasCustomAngles();
 	void SetCustomAngles( QAngle angles );
+	void SetTargetAngles( QAngle angles );
 	void SetTargetPos( Vector pos );
 	void SetTargetCoord( matrix3x4_t coord );
 
@@ -52,12 +53,15 @@ struct CVRBoneInfo
 	CUtlVector< CVRBoneInfo* > childBones;
 
 	bool hasNewAngles;
+	bool setAsTargetAngle;
 	QAngle newAngles;
 
 	bool hasNewPos;
 	Vector newPos;
 
 	bool hasNewCoord;
+
+	bool drawChildAxis;
 
 #if ENGINE_ASW
 	matrix3x4a_t newCoord;
@@ -86,8 +90,6 @@ public:
 	// Modified Functions if in VR
 	// ------------------------------------------------------------------------------------------------
 	virtual float                   GetFOV();
-	virtual Vector                  EyePosition();
-	virtual const QAngle&           EyeAngles();
 	virtual const QAngle&           LocalEyeAngles();
 	virtual bool					CreateMove( float flInputSampleTime, CUserCmd *pCmd );
 	virtual void                    ClientThink();
@@ -118,7 +120,6 @@ public:
 	virtual void                    SetViewRotateOffset( float offset );
 	virtual void                    AddViewRotateOffset( float offset );
 	virtual void                    CorrectViewRotateOffset();
-	virtual const QAngle&           EyeAnglesNoOffset();
 
 	virtual CVRBoneInfo*            GetBoneInfo( CVRTracker* pTracker );
 	virtual CVRBoneInfo*            GetRootBoneInfo( CVRTracker* pTracker );

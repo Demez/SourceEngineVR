@@ -47,6 +47,29 @@ CVRMoveData* CVRGameMovement::GetVRMoveData()
 	return ToVRMoveData( mv );
 }
 
+//-----------------------------------------------------------------------------
+// Stupid functions in gamemovement that shouldn't exist
+//-----------------------------------------------------------------------------
+const Vector& CVRGameMovement::GetPlayerMins( bool ducked ) const
+{
+	return player->GetPlayerMins();
+}
+
+const Vector& CVRGameMovement::GetPlayerMaxs( bool ducked ) const
+{	
+	return player->GetPlayerMaxs();
+}
+
+const Vector& CVRGameMovement::GetPlayerMins( void ) const
+{
+	return player->GetPlayerMins();
+}
+
+const Vector& CVRGameMovement::GetPlayerMaxs( void ) const
+{	
+	return player->GetPlayerMaxs();
+}
+
 
 void CVRGameMovement::PlayerMove()
 {
@@ -103,6 +126,8 @@ void CVRGameMovement::HandlePlaySpaceMovement( CVRMoveData *pMove )
 		isMovingUp = ( trace.fraction == 1 );
 	}
 
+	// maybe remove this fraction check?
+	// like if we're moving up in a very cramped area, this won't be called
 	if ( trace.fraction == 1 )
 	{
 		// find the ground position now
@@ -145,8 +170,11 @@ void CVRGameMovement::HandlePlaySpaceMovement( CVRMoveData *pMove )
 
 	if ( vr_dbg_playspacemove.GetBool() )
 	{
-		// NDebugOverlay::Line( whereOriginWouldBe, goalPos, 0, 255, 0, false, 0.0f );
-		// NDebugOverlay::Line( whereOriginWouldBe, newPos, 0, 0, 255, false, 0.0f );
+		if ( newPos.DistTo( pMove->GetAbsOrigin() ) > 0.001f )
+		{
+			NDebugOverlay::Line( pMove->GetAbsOrigin() + Vector(0, 0, 8), newPos + Vector(0, 0, 8), 0, 255, 0, true, 0.0f );
+			// NDebugOverlay::Line( viewOrigin, newPos, 0, 0, 255, false, 0.0f );
+		}
 
 		engine->Con_NPrintf( 20, "New Origin:               %s\n", VecToString(newPos) );
 		engine->Con_NPrintf( 21, "Goal Origin:              %s\n", VecToString(goalPos) );
@@ -155,7 +183,7 @@ void CVRGameMovement::HandlePlaySpaceMovement( CVRMoveData *pMove )
 		engine->Con_NPrintf( 24, "View Offset from Origin:  %s\n", VecToString(m_viewOriginOffset) );
 		engine->Con_NPrintf( 25, "Trace Fraction: %.6f\n", trace.fraction );
 		engine->Con_NPrintf( 26, "Should Move Player: %s\n", movePlayerOrigin ? "YES" : "NO" );
-		engine->Con_NPrintf( 26, "Is Moving Up: %s\n", isMovingUp ? "YES" : "NO" );
+		engine->Con_NPrintf( 27, "Is Moving Up: %s\n", isMovingUp ? "YES" : "NO" );
 	}
 }
 

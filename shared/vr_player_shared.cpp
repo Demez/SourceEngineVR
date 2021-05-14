@@ -98,7 +98,96 @@ void CVRBasePlayerShared::PreThink()
 {
 	BaseClass::PreThink();
 
+	// if ( !m_bInVR )
+	// 	return;
+
 	HandleVRMoveData();
+}
+
+
+Vector CVRBasePlayerShared::Weapon_ShootPosition()
+{
+	// TODO: do this better, need to add a check for which hand is the weapon hand,
+	// and somehow get the position of the end of the barrel
+	// later i should just move this into the base weapon class itself
+	if ( !m_bInVR || !GetRightHand() )
+		return BaseClass::Weapon_ShootPosition();
+
+	return GetRightHand()->GetAbsOrigin();
+}
+
+
+const Vector CVRBasePlayerShared::GetPlayerMins( void )
+{
+	if ( !m_bInVR || !GetHeadset() )
+		return BaseClass::GetPlayerMins();
+
+	CalculatePlayerBBox();
+	return m_minSize;
+}
+
+
+const Vector CVRBasePlayerShared::GetPlayerMaxs( void )
+{	
+	if ( !m_bInVR || !GetHeadset() )
+	 	return BaseClass::GetPlayerMaxs();
+
+	CalculatePlayerBBox();
+	return m_maxSize;
+}
+
+
+void CVRBasePlayerShared::CalculatePlayerBBox()
+{
+	// TODO: actually calculate it based on headset height
+	CVRTracker* hmd = GetHeadset();
+
+	hmd->m_pos.z;
+
+	if ( GetFlags() & FL_DUCKING )
+	{
+		m_maxSize = VEC_DUCK_HULL_MAX;
+		m_minSize = VEC_DUCK_HULL_MIN;
+	}
+	else
+	{
+		m_maxSize = VEC_HULL_MAX;
+		m_minSize = VEC_HULL_MIN;
+	}
+}
+
+
+Vector CVRBasePlayerShared::EyePosition()
+{
+	if ( m_bInVR )
+	{
+		// CVRTracker* hmd = GetHeadset();
+		// if ( hmd == NULL )
+		// 	return BaseClass::EyePosition();
+
+		Vector basePos = GetAbsOrigin();
+		basePos += m_viewOriginOffset;
+		// basePos.z += hmd->m_pos.z;
+
+		return basePos;
+	}
+	else
+	{
+		return BaseClass::EyePosition();
+	}
+}
+
+
+const QAngle &CVRBasePlayerShared::EyeAngles()
+{
+	if ( m_bInVR )
+	{
+		return m_vrViewAngles;
+	}
+	else
+	{
+		return BaseClass::EyeAngles();
+	}
 }
 
 

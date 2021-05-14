@@ -41,3 +41,19 @@ inline void NormalizeAngle( QAngle &angle )
 	angle.y = AngleNormalize( angle.y );
 	angle.z = AngleNormalize( angle.z );
 }
+
+#if ENGINE_ASW
+inline void MatrixScaleByZero( matrix3x4_t &out )
+{
+	out[0][0] = 0.0f;
+	out[1][0] = 0.0f;
+	out[2][0] = 0.0f;
+	out[0][1] = 0.0f;
+	out[1][1] = 0.0f;
+	out[2][1] = 0.0f;
+	out[0][2] = 0.0f;
+	out[1][2] = 0.0f;
+	out[2][2] = 0.0f;
+}
+#endif
+

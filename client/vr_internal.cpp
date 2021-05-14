@@ -244,9 +244,6 @@ void VRSystemInternal::Submit( bool isDX11, void* submitData, vr::EVREye eye )
 
 void VRSystemInternal::CalcTextureBounds( float &aspect, float &fov )
 {
-    //  vr::VRTextureBounds_t textureBounds;
-    // VREyeViewParams viewParams = g_VR.GetEyeViewParams( eye );
-
     float l_left, l_right, l_top, l_bottom;
     g_pOVR->GetProjectionRaw( vr::Eye_Left, &l_left, &l_right, &l_top, &l_bottom );
 
