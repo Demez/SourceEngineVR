@@ -339,8 +339,7 @@ bool C_VRBasePlayer::CreateMove( float flInputSampleTime, CUserCmd *pCmd )
 		// PerformClientSideNPCSpeedModifiers( TICK_INTERVAL, pCmd );
 	}
 
-	CVRInput* vr_input = (CVRInput*)input;
-	vr_input->VRMove( flInputSampleTime, pCmd );
+	GetVRInput()->VRMove( flInputSampleTime, pCmd );
 
 	return ret;
 }

@@ -38,7 +38,9 @@ ConVar vr_eye_width("vr_eye_w", "0", FCVAR_CLIENTDLL, "Override the render targe
 extern ConVar vr_dbg_rt_test;
 extern ConVar vr_scale;
 
+#if ENGINE_NEW
 extern ConVar mat_postprocess_enable;
+#endif
 
 
 VRSystem                    g_VR;
@@ -128,6 +130,12 @@ CON_COMMAND(vr_info, "Lists all information")
 vr::EVREye ToOVREye( VREye eye )
 {
 	return (eye == VREye::Left) ? vr::EVREye::Eye_Left : vr::EVREye::Eye_Right;
+}
+
+
+bool InVR()
+{
+    return g_VR.active;
 }
 
 
@@ -595,8 +603,11 @@ bool VRSystem::Enable()
     // convienence
     engine->ClientCmd_Unrestricted("engine_no_focus_sleep 0");
     vr_active_hack.SetValue("1");
+
+#if ENGINE_NEW
     g_wasPostProcessingOn = mat_postprocess_enable.GetBool();
     mat_postprocess_enable.SetValue("0");
+#endif
 
 	Update( 0.0 );
 	return true;
@@ -632,7 +643,10 @@ bool VRSystem::Disable()
     // i would save the old value, but nobody changes this anyway
     engine->ClientCmd_Unrestricted("engine_no_focus_sleep 50");
     vr_active_hack.SetValue("0");
+    
+#if ENGINE_NEW
     mat_postprocess_enable.SetValue( g_wasPostProcessingOn );
+#endif
 
 	return true;
 }

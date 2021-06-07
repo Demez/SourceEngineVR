@@ -32,12 +32,9 @@ public:
 	virtual void JoyStickInput( float frametime, CUserCmd *cmd );
 	virtual void VRHeadsetAngles( float frametime );
 
-	// minor input changes
 #if ENGINE_NEW
-	// virtual void AccumulateMouse( int nSlot );
 	virtual void AdjustAngles( int nSlot, float frametime );
 #else
-	// virtual void AccumulateMouse();
 	virtual void AdjustAngles( float frametime );
 #endif
 
@@ -53,6 +50,9 @@ public:
 	bool bFlashlightOn;
 	bool bInNextWeapon;
 };
+
+
+extern CVRInput* GetVRInput();
 
 
 #endif

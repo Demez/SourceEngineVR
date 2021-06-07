@@ -1,20 +1,23 @@
-#include "cbase.h"
-#include "ivmodemanager.h"
+#pragma once
+
+#include "clientmode_shared.h"
+#include "engine_defines.h"
 
 
-class CVRModeManager : public IVModeManager
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+class VRClientMode : public ClientModeShared
 {
 public:
-				CVRModeManager( void );
-	virtual		~CVRModeManager( void );
+	DECLARE_CLASS( VRClientMode, ClientModeShared );
 
-	virtual void	CreateMove( float flInputSampleTime, CUserCmd *cmd );
+	VRClientMode();
+	~VRClientMode();
 
-	// unused
-	virtual void	Init( void ) {}
-	virtual void	SwitchMode( bool commander, bool force ) {}
-	virtual void	OverrideView( CViewSetup *pSetup ) {}
-	virtual void	LevelInit( const char *newmap ) {}
-	virtual void	LevelShutdown( void ) {}
+	virtual bool CreateMove( float flInputSampleTime, CUserCmd *cmd );
 };
+
+
+extern VRClientMode* GetVRClientMode();
 

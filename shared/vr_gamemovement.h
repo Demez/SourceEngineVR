@@ -49,10 +49,10 @@ public:
 	CVRMoveData*                    GetVRMoveData();
 	CVRBasePlayer*                  GetVRPlayer();
 
-	virtual const Vector&           GetPlayerMins( bool ducked ) const;
+	/*virtual const Vector&           GetPlayerMins( bool ducked ) const;
 	virtual const Vector&           GetPlayerMaxs( bool ducked ) const;
 	virtual const Vector&           GetPlayerMins() const;
-	virtual const Vector&           GetPlayerMaxs() const;
+	virtual const Vector&           GetPlayerMaxs() const;*/
 
 	virtual void                    ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove );
 	virtual void                    PlayerMove();

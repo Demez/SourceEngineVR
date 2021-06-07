@@ -1,37 +1,37 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
-//
-// Purpose: 
-//
-// $NoKeywords: $
-//
-//=============================================================================//
 #include "cbase.h"
-#include "ivmodemanager.h"
 #include "vr_clientmode.h"
-#include "panelmetaclassmgr.h"
-#include "iinput.h"
 #include "vr_input.h"
 
-#if ENGINE_NEW
-#include "c_gameinstructor.h"
-#include "c_baselesson.h"
-#endif
+// useless file
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
 
-CVRModeManager::CVRModeManager( void )
+VRClientMode* GetVRClientMode()
+{
+	Assert( dynamic_cast< VRClientMode* >( GetClientModeNormal() ) );
+
+	return static_cast< VRClientMode* >( GetClientModeNormal() );
+}
+
+
+VRClientMode::VRClientMode()
 {
 }
 
-CVRModeManager::~CVRModeManager( void )
+
+VRClientMode::~VRClientMode()
 {
 }
 
-void CVRModeManager::CreateMove( float flInputSampleTime, CUserCmd *cmd )
+
+bool VRClientMode::CreateMove( float flInputSampleTime, CUserCmd *cmd )
 {
-	CVRInput* vr_input = (CVRInput*)input;
-	vr_input->VRMove( flInputSampleTime, cmd );
+	bool ret = BaseClass::CreateMove( flInputSampleTime, cmd );
+
+	GetVRInput()->VRMove( flInputSampleTime, cmd );
+
+	return ret;
 }
 

@@ -52,6 +52,8 @@ CVRViewRender::CVRViewRender()
 
 	leftEyeMat = NULL;
 	rightEyeMat = NULL;
+
+	m_bIsInEyeRender = false;
 }
 
 
@@ -317,6 +319,8 @@ void CVRViewRender::RenderViewEye( CMatRenderContextPtr &pRenderContext, const C
 	if ( eyeTex == NULL )
 		return;
 
+	m_bIsInEyeRender = true;
+
 	CViewSetup eyeView(view);
 	PrepareEyeViewSetup( eyeView, view, eye );
 	int rtWidth = eyeTex->GetActualWidth();
@@ -327,12 +331,14 @@ void CVRViewRender::RenderViewEye( CMatRenderContextPtr &pRenderContext, const C
 	pRenderContext->ClearColor3ub( 0, 0, 0 );
 	pRenderContext->ClearBuffers( true, true );
 
-	BASE_RENDER_VIEW( eyeView, eyeView, nClearFlags, RENDERVIEW_UNSPECIFIED );
+	BASE_RENDER_VIEW( eyeView, eyeView, nClearFlags, vr_dbg_rt_test.GetBool() ? RENDERVIEW_DRAWVIEWMODEL : RENDERVIEW_UNSPECIFIED );
 
 	if ( !vr_dbg_rt_test.GetBool() )
 		g_VR.Submit( eyeTex, eye );
 
 	POP_VIEW( pRenderContext, GetFrustum() );
+
+	m_bIsInEyeRender = false;
 }
 
 
@@ -428,5 +434,11 @@ void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudVie
 	{
 		BASE_RENDER_VIEW( view, view, nClearFlags, whatToDraw );
 	}
+}
+
+
+bool InVRRender()
+{
+	return g_ViewRender.m_bIsInEyeRender;
 }
 

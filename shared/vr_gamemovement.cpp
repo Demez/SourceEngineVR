@@ -2,6 +2,7 @@
 #include "vr_gamemovement.h"
 #include "tier1/fmtstr.h"
 #include "coordsize.h"
+#include "engine/ivdebugoverlay.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -49,8 +50,9 @@ CVRMoveData* CVRGameMovement::GetVRMoveData()
 
 //-----------------------------------------------------------------------------
 // Stupid functions in gamemovement that shouldn't exist
+// breaks player movement a lot apparently
 //-----------------------------------------------------------------------------
-const Vector& CVRGameMovement::GetPlayerMins( bool ducked ) const
+/*const Vector& CVRGameMovement::GetPlayerMins( bool ducked ) const
 {
 	return player->GetPlayerMins();
 }
@@ -68,7 +70,7 @@ const Vector& CVRGameMovement::GetPlayerMins( void ) const
 const Vector& CVRGameMovement::GetPlayerMaxs( void ) const
 {	
 	return player->GetPlayerMaxs();
-}
+}*/
 
 
 void CVRGameMovement::PlayerMove()
@@ -172,7 +174,7 @@ void CVRGameMovement::HandlePlaySpaceMovement( CVRMoveData *pMove )
 	{
 		if ( newPos.DistTo( pMove->GetAbsOrigin() ) > 0.001f )
 		{
-			NDebugOverlay::Line( pMove->GetAbsOrigin() + Vector(0, 0, 8), newPos + Vector(0, 0, 8), 0, 255, 0, true, 0.0f );
+			debugoverlay->AddLineOverlay( pMove->GetAbsOrigin() + Vector(0, 0, 8), newPos + Vector(0, 0, 8), 0, 255, 0, true, 0.0f );
 			// NDebugOverlay::Line( viewOrigin, newPos, 0, 0, 255, false, 0.0f );
 		}
 
@@ -194,7 +196,7 @@ void CVRGameMovement::ProcessVRMovement( CVRBasePlayerShared *pPlayer, CVRMoveDa
 		return;
 
 	// really shouldn't be here since this needs prediction on for the client, so it won't work in single player
-	pPlayer->UpdateTrackers();
+	// pPlayer->UpdateTrackers();
 }
 
 

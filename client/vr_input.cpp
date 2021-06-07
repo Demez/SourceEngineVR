@@ -208,6 +208,12 @@ static float ResponseCurve( int curve, float x, int axis, float sensitivity )
 }
 
 
+CVRInput* GetVRInput()
+{
+	return (CVRInput*)input;
+}
+
+
 // ====================================================================================================
 // actual changes
 // ====================================================================================================
@@ -424,28 +430,6 @@ int CVRInput::GetButtonBits( bool bResetState )
 
 	return m_bits;
 }
-
-
-// ====================================================================================================
-// minor changes
-// ====================================================================================================
-#if 0
-void CVRInput::AccumulateMouse( int nSlot )
-{
-	if ( !g_VR.active || vr_allow_mouse.GetBool() )
-		#if ENGINE_NEW
-			BaseClass::AccumulateMouse( 0 );
-		#else
-			BaseClass::AccumulateMouse();
-		#endif
-}
-
-
-void CVRInput::AccumulateMouse()
-{
-	AccumulateMouse( 0 );
-}
-#endif
 
 
 void CVRInput::VRHeadsetAngles( float frametime )

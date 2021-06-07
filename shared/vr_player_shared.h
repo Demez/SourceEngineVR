@@ -41,7 +41,6 @@ public:
 #ifdef GAME_DLL
 	virtual bool                    CreateVPhysics();
 	void                            InitBoneFollowers();
-	virtual void                    SetTransmit( CCheckTransmitInfo *pInfo, bool bAlways );
 #endif
 
 	virtual void                    PreThink();

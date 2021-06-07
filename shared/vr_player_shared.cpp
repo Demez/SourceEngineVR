@@ -74,33 +74,11 @@ void CVRBasePlayerShared::InitBoneFollowers()
 }
 
 
-void CVRBasePlayerShared::SetTransmit( CCheckTransmitInfo *pInfo, bool bAlways )
-{
-	// Skip this work if we're already marked for transmission.
-	if ( pInfo->m_pTransmitEdict->Get( entindex() ) )
-		return;
-
-	BaseClass::SetTransmit( pInfo, bAlways );
-
-	/*for (int i = 0; i < MAX_VR_TRACKERS; i++)
-	{
-		CVRTracker *pTracker = m_VRTrackers[i];
-		if ( !pTracker )
-			continue;
-
-		pTracker->SetTransmit( pInfo, bAlways );
-	}*/
-}
 #endif
 
 
 void CVRBasePlayerShared::PreThink()
 {
-	BaseClass::PreThink();
-
-	// if ( !m_bInVR )
-	// 	return;
-
 	HandleVRMoveData();
 }
 
@@ -199,8 +177,7 @@ void CVRBasePlayerShared::HandleVRMoveData()
 	if ( !m_bInVR )
 		return;
 
-	// call moved to vr_gamemovement.cpp for prediction (bad idea actually?)
-	// UpdateTrackers();
+	UpdateTrackers();
 }
 
 

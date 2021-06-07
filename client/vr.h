@@ -191,4 +191,7 @@ public:
 
 extern VRSystem g_VR;
 
+bool InVR();
+bool InVRRender();
+
 #endif
