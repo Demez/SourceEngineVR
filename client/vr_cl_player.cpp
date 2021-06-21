@@ -959,7 +959,7 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 		}
 	}
 
-	/*for (int i = 0; i < m_VRTrackers.Count(); i++)
+	for (int i = 0; i < m_VRTrackers.Count(); i++)
 	{
 		CVRTracker* pTracker = m_VRTrackers[i];
 
@@ -967,7 +967,7 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 			continue;
 
 		RecurseApplyBoneTransforms( GetRootBoneInfo( pTracker ) );
-	}*/
+	}
 
 	if ( !hmd )
 		return;
@@ -1283,7 +1283,7 @@ void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, C
 	{
 		g_VRIK.CreateArmNodes( this, pTracker, handBoneInfo, clavicleBoneInfo );
 		g_VRIK.UpdateArm( this, pTracker, handBoneInfo, clavicleBoneInfo );
-		RecurseApplyBoneTransforms( clavicleBoneInfo );
+		// RecurseApplyBoneTransforms( clavicleBoneInfo );
 	}
 }
 
