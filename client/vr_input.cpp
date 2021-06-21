@@ -401,7 +401,7 @@ void CVRInput::CalcButtonBitsToggleCmd( const char* action, bool& bEnabled, cons
 // TODO: handle driving inputs, would need to check the active action set
 int CVRInput::GetButtonBits( bool bResetState )
 {
-	if ( !g_VR.active )
+	if ( !g_VR.active || !g_VR.m_inMap )
 		return BaseClass::GetButtonBits( bResetState );
 
 	int bits = 0;

@@ -12,16 +12,38 @@
 #include <materialsystem/itexture.h>
 
 class ITexture;
+class VRDeviceType;
+enum class EVRTracker;
 
 
-struct VRHostTracker
+class VRHostTracker
 {
+public:
+	VRHostTracker();
+	~VRHostTracker();
+
 	const char* name;
 	VMatrix mat;
 	Vector pos;
 	Vector vel;
 	QAngle ang;
 	QAngle angvel;
+	bool valid;
+	EVRTracker type;
+	VRDeviceType* device = nullptr;
+
+	// inline const char*         GetModelName() { return device ? device->GetTrackerModelName(type) : ""; }
+	const char*         GetModelName();
+
+	/*inline bool         IsHeadset()     { return (type == EVRTracker::HMD); }
+	inline bool         IsHand()        { return (type == EVRTracker::LHAND || type == EVRTracker::RHAND); }
+	inline bool         IsFoot()        { return (type == EVRTracker::LFOOT || type == EVRTracker::RFOOT); }
+	inline bool         IsHip()         { return (type == EVRTracker::HIP); }
+
+	inline bool         IsLeftHand()    { return (type == EVRTracker::LHAND); }
+	inline bool         IsRightHand()   { return (type == EVRTracker::RHAND); }
+	inline bool         IsLeftFoot()    { return (type == EVRTracker::LFOOT); }
+	inline bool         IsRightFoot()   { return (type == EVRTracker::RFOOT); }*/
 };
 
 
@@ -155,9 +177,13 @@ public:
 	bool                        Enable();
 	bool                        Disable();
 
+	void                        StartThread();
+	void                        StopThread();
+
 	void                        UpdateTrackers();
 	void                        UpdateActions();
 
+	VRHostTracker*              GetTracker( EVRTracker tracker );
 	VRHostTracker*              GetTrackerByName( const char* name );
 	VRBaseAction*               GetActionByName( const char* name );
 
@@ -176,6 +202,7 @@ public:
 
 	void                        Submit( ITexture* rtEye, VREye eye );
 	void                        Submit( ITexture* leftEye, ITexture* rightEye );
+	void                        WaitGetPoses();
 
 public:
 	bool active;
@@ -185,13 +212,17 @@ public:
 	CUtlVector< VRBaseAction* > m_currentActions;
 	// CUtlVector< VRBaseAction* > previousActions;
 
+	// CUtlVector< VRDeviceType* > m_deviceTypes;
+
 	bool m_seatedMode;
 	double m_scale;
+	bool m_inMap;
 };
 
 extern VRSystem g_VR;
 
 bool InVR();
 bool InVRRender();
+bool InTestRender();
 
 #endif

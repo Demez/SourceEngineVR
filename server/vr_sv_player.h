@@ -38,6 +38,8 @@ public:
 	virtual void                    PostThink();
 	virtual void                    Spawn();
 
+	virtual void                    SetAnimation( PLAYER_ANIM playerAnim );
+
 	// CNetworkQAngle( m_angEyeAngles );	// Copied from EyeAngles() so we can send it to the client.
 
 	// ------------------------------------------------------------------------------------------------

@@ -57,7 +57,13 @@ public:
 	virtual void                    ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove );
 	virtual void                    PlayerMove();
 
-	virtual void                    HandlePlaySpaceMovement( CVRMoveData *pMove );
+	virtual void                    PlaySpaceMoveWalk( CVRMoveData *pMove );
+	virtual void                    PlaySpaceMoveFrozen( CVRMoveData *pMove );
+	virtual bool                    PlaySpaceMoveLadder( CVRMoveData *pMove );
+
+	// will return something else later, or have trace_t in it
+	virtual bool                    CheckForLadderModelHack();
+
 	virtual void                    ProcessVRMovement( CVRBasePlayerShared *pPlayer, CVRMoveData *pMove );
 
 	Vector					        m_viewOriginOffset; // offset of view based on where bbox is

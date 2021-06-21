@@ -29,39 +29,16 @@ public:
 	virtual void RenderView( const CViewSetup &view, int nClearFlags, int whatToDraw );
 	virtual void RenderView( const CViewSetup &view, const CViewSetup &hudView, int nClearFlags, int whatToDraw );
 
-	virtual void RenderViewEye( CMatRenderContextPtr &pRenderContext, const CViewSetup &view, int nClearFlags, ITexture* eyeTex, VREye eye );
+	virtual void RenderViewTest( const CViewSetup &view, const CViewSetup &hudView, int nClearFlags, int whatToDraw );
+	virtual void ViewDrawSceneTest( bool bDrew3dSkybox, SkyboxVisibility_t nSkyboxVisible, const CViewSetup &view, int nClearFlags, view_id_t viewID, bool bDrawViewModel = false, int baseDrawFlags = 0, ViewCustomVisibility_t *pCustomVisibility = NULL );
 
-	virtual void PrepareEyeViewSetup( CViewSetup &eyeView, const CViewSetup &screenView, VREye eye );
+	virtual void RenderViewEye( CMatRenderContextPtr &pRenderContext, const CViewSetup &view, int nClearFlags, ITexture* eyeTex, VREye eye );
+	virtual void RenderViewDesktop( const CViewSetup &view, const CViewSetup &hudView, int nClearFlags, int whatToDraw );
 
 	// will extend this into it's own class, so you can pickup and move the camera around
 	// might need to have that be an entity to make it easy though
 	// unless i create a custom vr item pickup class for local use only
 	virtual void SetupCameraView( CViewSetup &camView );
-
-	virtual void UpdateEyeRenderTargets();
-	virtual void InitEyeRenderTargets();
-	virtual void InitEyeMats();
-
-	ITexture *leftEye;
-	ITexture *leftEyeDepth;
-
-	ITexture *rightEye;
-	ITexture *rightEyeDepth;
-
-	// dumb
-	CTextureReference leftEyeRef;
-	CTextureReference leftEyeDepthRef;
-
-	CTextureReference rightEyeRef;
-	CTextureReference rightEyeDepthRef;
-
-	IMaterial *leftEyeMat;
-	IMaterial *rightEyeMat;
-
-	int lastWidth;
-	int lastHeight;
-
-	bool m_bIsInEyeRender;
 };
 
 

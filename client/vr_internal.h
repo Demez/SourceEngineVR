@@ -14,6 +14,12 @@
 #undef CreateEvent
 #endif
 
+#include "shaderapi/ishaderapi.h"
+#include "shaderapi/IShaderDevice.h"
+#include "shaderapi/ishaderdynamic.h"
+#include "shaderapi/ishadershadow.h"
+#include "../materialsystem/IHardwareConfigInternal.h"
+
 #define MAX_STR_LEN 4096
 #define MAX_ACTIONS 64
 #define MAX_ACTIONSETS 16
@@ -36,11 +42,15 @@ struct actionSet
 
 enum class VREye;
 
+extern IShaderAPI *g_pShaderAPI;
+
 
 // these are separate from the VRSystem class because these are only used internally in this file
 class VRSystemInternal
 {
 public:
+
+    bool        InitShaderAPI();
 
     void        OpenSharedResource( HANDLE eyeHandle, VREye eye );
     void        InitDX9Device( void* deviceData );

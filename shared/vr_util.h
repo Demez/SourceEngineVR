@@ -57,3 +57,14 @@ inline void MatrixScaleByZero( matrix3x4_t &out )
 }
 #endif
 
+void DebugAxis( const Vector &position, const QAngle &angles, float size, bool noDepthTest, float flDuration );
+
+QAngle VR_GetPointAng( const QAngle& ang );
+Vector VR_GetPointDir( const QAngle& ang );
+Vector VR_GetPointPos( const Vector& pos );
+
+#ifdef CLIENT_DLL
+void VR_DrawPointer( const Vector& pointPos, const Vector& pointDir, Vector& prevDir );
+void VR_DrawPointer( const Vector& pos, const QAngle& ang, Vector& prevDir );
+#endif
+

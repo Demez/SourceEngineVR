@@ -42,10 +42,20 @@ public:
 	virtual bool                    CreateVPhysics();
 	void                            InitBoneFollowers();
 #endif
+	virtual void                    OnVREnabled();
+	virtual void                    OnVRDisabled();
 
 	virtual void                    PreThink();
 
 	virtual Vector                  Weapon_ShootPosition();
+	virtual QAngle                  GetWeaponShootAng();
+	virtual Vector                  GetWeaponShootDir();
+
+	virtual Vector                  GetAutoaimVector( float flScale );
+
+#ifdef GAME_DLL
+	virtual void                    GetAutoaimVector( autoaim_params_t &params );
+#endif
 
 	virtual const Vector            GetPlayerMins(); // NOTE: need to change in base code to be not const
 	virtual const Vector            GetPlayerMaxs(); // NOTE: need to change in base code to be not const
@@ -64,6 +74,7 @@ public:
 	inline CVRTracker*              GetHeadset()    { return GetTracker( EVRTracker::HMD ); }
 	inline CVRController*           GetLeftHand()   { return (CVRController*)GetTracker( EVRTracker::LHAND ); }
 	inline CVRController*           GetRightHand()  { return (CVRController*)GetTracker( EVRTracker::RHAND ); }
+	CVRController*                  GetWeaponHand();
 
 	virtual CBaseEntity*            FindUseEntity();
 

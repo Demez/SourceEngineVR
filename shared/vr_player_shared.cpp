@@ -14,17 +14,8 @@
 extern CMoveData* g_pMoveData;
 
 
-static const char *pFollowerBoneNames[] =
-{
-	"ValveBiped.Bip01_Head1",
-	"ValveBiped.Bip01_Spine",
+extern ConVar vr_lefthand;
 
-	"ValveBiped.Bip01_L_Hand",
-	"ValveBiped.Bip01_R_Hand",
-
-	"ValveBiped.Bip01_L_Foot",
-	"ValveBiped.Bip01_R_Foot",
-};
 
 IMPLEMENT_NETWORKCLASS( CVRBasePlayerShared, DT_VRBasePlayerShared )
 
@@ -57,24 +48,27 @@ void CVRBasePlayerShared::Spawn()
 #ifdef GAME_DLL
 bool CVRBasePlayerShared::CreateVPhysics()
 {
-	bool ret = BaseClass::CreateVPhysics();
-	// InitBoneFollowers();
-	return ret;
+	return BaseClass::CreateVPhysics();
 }
 
 
 void CVRBasePlayerShared::InitBoneFollowers()
 {
-	// Don't do this if we're already loaded
-	/*if ( m_BoneFollowerManager.GetNumBoneFollowers() != 0 )
-		return;
-
-	// Init our followers
-	m_BoneFollowerManager.InitBoneFollowers( this, ARRAYSIZE(pFollowerBoneNames), pFollowerBoneNames );*/
 }
 
 
 #endif
+
+
+void CVRBasePlayerShared::OnVREnabled()
+{
+}
+
+
+void CVRBasePlayerShared::OnVRDisabled()
+{
+	m_VRTrackers.PurgeAndDeleteElements();
+}
 
 
 void CVRBasePlayerShared::PreThink()
@@ -85,14 +79,125 @@ void CVRBasePlayerShared::PreThink()
 
 Vector CVRBasePlayerShared::Weapon_ShootPosition()
 {
-	// TODO: do this better, need to add a check for which hand is the weapon hand,
-	// and somehow get the position of the end of the barrel
-	// later i should just move this into the base weapon class itself
-	if ( !m_bInVR || !GetRightHand() )
+	if ( !m_bInVR || !GetActiveWeapon() || !GetWeaponHand() )
 		return BaseClass::Weapon_ShootPosition();
 
-	return GetRightHand()->GetAbsOrigin();
+	Vector muzzlePos;
+	QAngle muzzleAng;
+
+	/*if ( GetActiveWeapon()->GetAttachment( GetActiveWeapon()->LookupAttachment( "muzzle" ), muzzlePos, muzzleAng ))
+	{
+		return muzzlePos;
+	}*/
+
+	return GetWeaponHand()->GetAbsOrigin();
 }
+
+
+QAngle CVRBasePlayerShared::GetWeaponShootAng()
+{
+	if ( !m_bInVR /*|| !GetActiveWeapon()*/ )
+		return EyeAngles();
+
+	Vector muzzlePos;
+	QAngle muzzleAng;
+
+	/*if ( GetActiveWeapon()->GetAttachment( GetActiveWeapon()->LookupAttachment( "muzzle" ), muzzlePos, muzzleAng ))
+	{
+		return muzzleAng;
+	}
+	else*/ if ( GetWeaponHand() )
+	{
+		return GetWeaponHand()->GetPointAng();
+	}
+
+	return EyeAngles();
+}
+
+Vector CVRBasePlayerShared::GetWeaponShootDir()
+{
+	if ( GetWeaponHand() )
+		return GetWeaponHand()->GetPointDir();
+
+	Vector forward;
+	AngleVectors( EyeAngles(), &forward );
+	return forward;
+}
+
+Vector CVRBasePlayerShared::GetAutoaimVector( float flScale )
+{
+	if ( !m_bInVR )
+		return BaseClass::GetAutoaimVector( flScale );
+
+	return GetWeaponShootDir();
+}
+
+
+#ifdef GAME_DLL
+void CVRBasePlayerShared::GetAutoaimVector( autoaim_params_t &params )
+{
+	if ( !m_bInVR )
+	{
+		BaseClass::GetAutoaimVector( params );
+		return;
+	}
+
+	params.m_bAutoAimAssisting = false;
+	params.m_bOnTargetNatural = false;
+	params.m_hAutoAimEntity.Set( NULL );
+	params.m_vecAutoAimPoint = vec3_invalid;
+
+	// if ( ( ShouldAutoaim() == false ) || ( params.m_fScale == AUTOAIM_SCALE_DIRECT_ONLY ) )
+	{
+		params.m_vecAutoAimDir = GetWeaponShootDir();
+		return;
+	}
+
+	/*Vector vecShootPosition = Weapon_ShootPosition();
+	// DEMEZ TODO: Needs to be changed for autoaim
+	QAngle angles = AutoaimDeflection( vecShootPosition, params );
+	
+	// update ontarget if changed
+	if ( !g_pGameRules->AllowAutoTargetCrosshair() )
+	{
+		m_fOnTarget = false;
+	}
+
+	if (angles.x > 180)
+		angles.x -= 360;
+	if (angles.x < -180)
+		angles.x += 360;
+	if (angles.y > 180)
+		angles.y -= 360;
+	if (angles.y < -180)
+		angles.y += 360;
+
+	if (angles.x > 25)
+		angles.x = 25;
+	if (angles.x < -25)
+		angles.x = -25;
+	if (angles.y > 12)
+		angles.y = 12;
+	if (angles.y < -12)
+		angles.y = -12;
+
+	m_vecAutoAim.Init( 0.0f, 0.0f, 0.0f );
+	Vector	forward;
+
+	if ( ( IsInAVehicle() && g_pGameRules->GetAutoAimMode() == AUTOAIM_ON_CONSOLE ) )
+	{
+		m_vecAutoAim = angles;
+		AngleVectors( EyeAngles() + m_vecAutoAim, &forward );
+	}
+	else
+	{
+		// always use non-sticky autoaim
+		m_vecAutoAim = angles * 0.9f;
+		AngleVectors( EyeAngles() + m_Local.m_vecPunchAngle + m_vecAutoAim, &forward );
+	}
+	params.m_vecAutoAimDir = forward;*/
+}
+#endif
 
 
 const Vector CVRBasePlayerShared::GetPlayerMins( void )
@@ -171,7 +276,21 @@ const QAngle &CVRBasePlayerShared::EyeAngles()
 
 void CVRBasePlayerShared::HandleVRMoveData()
 {
+	bool vr = m_bInVR;
+
 	m_bInVR = GetVRMoveData()->vr_active;
+
+	if ( vr != m_bInVR )
+	{
+		if ( m_bInVR )
+		{
+			OnVREnabled();
+		}
+		else
+		{
+			OnVRDisabled();
+		}
+	}
 
 	// TODO: delete the trackers
 	if ( !m_bInVR )
@@ -194,26 +313,19 @@ void CVRBasePlayerShared::UpdateTrackers()
 		CVRTracker* tracker = GetTracker( cmdTracker.index );
 		if ( tracker )
 		{
-#if 0 // def CLIENT_DLL
-			// do we actually even need this check on the client?
-			if ( IsLocalPlayer() )  // can only predict if this is the local player
-#endif
+			if ( !tracker->m_bInit )
 			{
-				if ( !tracker->m_bInit )
-				{
-					tracker->InitTracker(cmdTracker, this);
-				}
-				else
-				{
-					tracker->UpdateTracker(cmdTracker);
-				}
+				tracker->InitTracker(cmdTracker, this);
+			}
+			else
+			{
+				tracker->UpdateTracker(cmdTracker);
 			}
 		}
 		else
 		{
 			tracker = CreateTracker(cmdTracker);
 		}
-
 	}
 }
 
@@ -244,10 +356,14 @@ CVRTracker* CVRBasePlayerShared::GetTracker( short index )
 }
 
 
-/*CVRTracker* CVRBasePlayerShared::GetTracker( const char* name )
+CVRController* CVRBasePlayerShared::GetWeaponHand()
 {
-	return GetTracker( GetTrackerEnum(name) );
-}*/
+	// TODO: this could vary for everyone, hmm
+	// if ( vr_lefthand.GetBool() )
+	//	return GetLeftHand();
+
+	return GetRightHand();
+}
 
 
 CVRTracker* CVRBasePlayerShared::CreateTracker( CmdVRTracker& cmdTracker )
@@ -255,7 +371,6 @@ CVRTracker* CVRBasePlayerShared::CreateTracker( CmdVRTracker& cmdTracker )
 	if ( !m_bInVR )
 		return NULL;
 
-	// uhhhh
 	CVRTracker* tracker;
 	EVRTracker type = GetTrackerEnum(cmdTracker.index);
 	
@@ -281,7 +396,7 @@ CVRTracker* CVRBasePlayerShared::CreateTracker( CmdVRTracker& cmdTracker )
 CBaseEntity* CVRBasePlayerShared::FindUseEntity()
 {
 	// CVRController will handle this
-	if ( !m_bInVR )
+	if ( !m_bInVR || (!GetLeftHand() && !GetRightHand()) )
 		return BaseClass::FindUseEntity();
 
 	return NULL;

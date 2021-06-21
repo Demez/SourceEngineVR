@@ -71,6 +71,8 @@ public:
 	//---------------------------------------------------------------
 	virtual Vector              GetPalmDir();
 	virtual Vector              GetPointDir();
+	virtual Vector              GetPointPos();
+	virtual QAngle              GetPointAng();
 	virtual void                GetFingerBoneNames( const char* fingerBoneNames[FINGER_BONE_COUNT] );
 	virtual void                SetDrawPointBeam( bool draw );
 

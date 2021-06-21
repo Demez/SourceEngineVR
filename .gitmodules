@@ -1,3 +1,6 @@
 [submodule "openvr"]
 	path = openvr
 	url = https://github.com/ValveSoftware/openvr
+[submodule "comet_ik"]
+	path = comet_ik
+	url = https://github.com/Demez/ik.git

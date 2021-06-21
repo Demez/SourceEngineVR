@@ -3,7 +3,12 @@
 #include "vr_util.h"
 #include "vr.h"
 #include "vr_internal.h"
+#include "vr_renderer.h"
+#include "vr_ik.h"
+#include "vr_cl_player.h"
+#include "vr_shared.h"
 
+#include <KeyValues.h>
 #include "IGameUIFuncs.h"
 #include "vgui_controls/Controls.h"
 #include <vgui/ISurface.h>
@@ -28,12 +33,15 @@
 #include "tier0/memdbgon.h"
 
 ConVar vr_autostart("vr_autostart", "0", FCVAR_ARCHIVE, "auto start vr on level load");
+ConVar vr_renderthread("vr_renderthread", "0", FCVAR_ARCHIVE, "use a separate thread for rendering in vr on the main menu or while loading a level");
 ConVar vr_active_hack("vr_active_hack", "0", FCVAR_CLIENTDLL, "lazy hack for anything that needs to know if vr is enabled outside of the game dlls (mouse lock)");
 ConVar vr_clamp_res("vr_clamp_res", "1", FCVAR_CLIENTDLL, "clamp the resolution to the screen size until the render clamping issue is figured out");
 ConVar vr_scale_override("vr_scale_override", "42.5");  // anything lower than 0.25 doesn't look right in the headset
 ConVar vr_dbg_rt_res("vr_dbg_rt_res", "2048", FCVAR_CLIENTDLL);
 ConVar vr_eye_height("vr_eye_h", "0", FCVAR_CLIENTDLL, "Override the render target height, 0 to disable");
 ConVar vr_eye_width("vr_eye_w", "0", FCVAR_CLIENTDLL, "Override the render target width, 0 to disable");
+
+ConVar vr_waitgetposes_test("vr_waitgetposes_test", "0", FCVAR_CLIENTDLL, "testing where WaitGetPoses is called");
 
 extern ConVar vr_dbg_rt_test;
 extern ConVar vr_scale;
@@ -51,9 +59,25 @@ vr::IVRInput*               g_pOVRInput = NULL;
 
 const double DEFAULT_VR_SCALE = 39.37012415030996;
 
+bool g_VRSupported;
 
 CON_COMMAND(vr_enable, "")   { g_VR.Enable(); }
 CON_COMMAND(vr_disable, "")  { g_VR.Disable();  }
+
+
+void CC_SwapHands( IConVar *var, const char *pOldValue, float flOldValue );
+
+ConVar vr_lefthand("vr_lefthand", "0", FCVAR_ARCHIVE, "", CC_SwapHands);
+
+void CC_SwapHands( IConVar *var, const char *pOldValue, float flOldValue )
+{
+    if ( g_pOVRInput )
+        g_pOVRInput->SetDominantHand( vr_lefthand.GetBool() ? vr::TrackedControllerRole_LeftHand : vr::TrackedControllerRole_RightHand );
+}
+
+
+// TODO:
+//  use ShowKeyboard somehow
 
 
 void ListTrackers()
@@ -137,6 +161,34 @@ bool InVR()
 {
     return g_VR.active;
 }
+
+
+// -----------------------------------------------------------------------------
+
+
+VRHostTracker::VRHostTracker()
+{
+    device = nullptr;
+}
+
+VRHostTracker::~VRHostTracker()
+{
+}
+
+
+const char* VRHostTracker::GetModelName()
+{
+    if ( !device )
+    {
+        // TEMPORARY PLEASE CHANGE
+        device = g_VRShared.GetDeviceType( "oculus_cv1" );
+    }
+
+    return device ? device->GetTrackerModelName(type) : "";
+}
+
+
+// -----------------------------------------------------------------------------
 
 
 /*
@@ -265,6 +317,7 @@ VMatrix VRSystem::GetMidEyeFromEye( VREye eEye )
 
 VRSystem::VRSystem(): CAutoGameSystemPerFrame("vr_system")
 {
+    m_inMap = false;
 }
 
 
@@ -275,7 +328,63 @@ VRSystem::~VRSystem()
 
 bool VRSystem::Init()
 {
+#if ENGINE_ASW
+    if ( CommandLine()->FindParm("-vrapi") )
+    {
+        if ( !g_VRInt.InitShaderAPI() )
+        {
+            Warning("[VR] Failed to init shaderapi\n");
+            // return false;
+        }
+        else
+        {
+            g_VRSupported = true;
+        }
+    }
+    else
+    {
+        g_VRSupported = false;
+    }
+#elif ENGINE_CSGO || ENGINE_QUIVER
+    g_VRSupported = true;
+#endif
+
+    engine->ClientCmd("exec vr\n");
+
+    g_VRRenderer.Init();
+
+    if ( vr_autostart.GetBool() )
+        Enable();
+
 	return true;
+}
+
+
+void VRSystem::StartThread()
+{
+    if ( g_VRRenderThread == NULL )
+    {
+        g_VRRenderThread = new CVRRenderThread;
+        g_VRRenderThread->SetName( "CVRRenderThread" );
+    }
+
+    g_VRRenderThread->shouldStop = false;
+
+#if ENGINE_CSGO
+    g_VRRenderThread->Start( 1024, TP_PRIORITY_HIGHEST );
+#else
+    g_VRRenderThread->Start( 1024 );
+    g_VRRenderThread->SetPriority( THREAD_PRIORITY_HIGHEST );
+#endif
+}
+
+
+void VRSystem::StopThread()
+{
+    if ( g_VRRenderThread )
+    {
+        g_VRRenderThread->shouldStop = true;
+    }
 }
 
 
@@ -289,10 +398,9 @@ void VRSystem::Update( float frametime )
         return;
     }
 
-	UpdateViewParams();
-    g_VRInt.WaitGetPoses();
-	UpdateTrackers();
-	UpdateActions();
+    // DEMEZ TODO: should probably be moved to viewrender?
+    if ( !vr_waitgetposes_test.GetBool() )
+        WaitGetPoses();
 
     if ( m_scale <= 0.0f )
         m_scale = DEFAULT_VR_SCALE;
@@ -300,15 +408,32 @@ void VRSystem::Update( float frametime )
     // hmmmm
     if ( !vr_active_hack.GetBool() )
         vr_active_hack.SetValue("1");
+
+    if ( !m_inMap )
+        g_VRRenderer.Render();
+}
+
+
+void VRSystem::WaitGetPoses()
+{
+	UpdateViewParams();
+    g_VRInt.WaitGetPoses();
+	UpdateTrackers();
+	UpdateActions();
 }
 
 
 void VRSystem::LevelInitPostEntity()
 {
-	if ( vr_autostart.GetBool() )
+    m_inMap = true;
+
+	if ( vr_autostart.GetBool() && !vr_renderthread.GetBool() )
     {
         Enable();
     }
+
+    if ( vr_renderthread.GetBool() )
+        StopThread();
 }
 
 void VRSystem::LevelShutdownPostEntity()
@@ -316,8 +441,32 @@ void VRSystem::LevelShutdownPostEntity()
 	// what if this is a level transition? shutting down would probably be stupid, right?
 	if ( active )
     {
-        Disable();
+        if ( vr_renderthread.GetBool() )
+            StartThread();
+        else
+            Disable();
     }
+
+    m_inMap = false;
+}
+
+
+VRHostTracker* VRSystem::GetTracker( EVRTracker tracker )
+{
+	for ( int i = 0; i < m_currentTrackers.Count(); i++ )
+	{
+        /*if ( !m_currentTrackers[i]->valid )
+        {
+            continue;
+        }*/
+
+		if ( m_currentTrackers[i]->type == tracker )
+		{
+			return m_currentTrackers[i];
+		}
+	}
+
+	return NULL;
 }
 
 
@@ -325,6 +474,11 @@ struct VRHostTracker* VRSystem::GetTrackerByName( const char* name )
 {
 	for ( int i = 0; i < m_currentTrackers.Count(); i++ )
 	{
+        /*if ( !m_currentTrackers[i]->valid )
+        {
+            continue;
+        }*/
+
 		if ( V_strcmp(m_currentTrackers[i]->name, name) == 0 )
 		{
 			return m_currentTrackers[i];
@@ -348,9 +502,22 @@ struct VRBaseAction* VRSystem::GetActionByName( const char* name )
 }
 
 
+extern EVRTracker GetTrackerEnum( const char* name );
+
+
 void VRSystem::UpdateTrackers()
 {
-	m_currentTrackers.PurgeAndDeleteElements();
+	// m_currentTrackers.PurgeAndDeleteElements();
+
+    CUtlVector< VRHostTracker* > tmpTrackers;
+
+    /*for ( int i = 0; i < m_currentTrackers.Count(); i++ )
+    {
+        // m_currentTrackers[i]->valid = false;
+        tmpTrackers[i] = m_currentTrackers[i];
+    }*/
+
+    // m_currentTrackers.Purge();
 
     vr::InputPoseActionData_t poseActionData;
     vr::TrackedDevicePose_t pose;
@@ -382,8 +549,16 @@ void VRSystem::UpdateTrackers()
         {
             vr::HmdMatrix34_t mat = pose.mDeviceToAbsoluteTracking;
 
-            struct VRHostTracker* tracker = (struct VRHostTracker*) malloc(sizeof(struct VRHostTracker));
-            tracker->name = strdup(poseName);
+            struct VRHostTracker* tracker = GetTrackerByName( poseName );
+            if ( tracker == NULL )
+            {
+                // tracker = (struct VRHostTracker*) malloc(sizeof(struct VRHostTracker));
+                tracker = new VRHostTracker;
+                tracker->name = strdup(poseName);
+                tracker->type = GetTrackerEnum( poseName );
+                // tracker->device = GetDeviceType( tracker->type );
+                // m_allTrackers.AddToTail( tracker );
+            }
 
             tracker->mat = OVRToSrcCoords( VMatrixFrom34( mat.m ) );
 
@@ -398,9 +573,43 @@ void VRSystem::UpdateTrackers()
             tracker->angvel.y = -pose.vAngularVelocity.v[0] * (180.0 / 3.141592654);
             tracker->angvel.z = pose.vAngularVelocity.v[1] * (180.0 / 3.141592654);
 
-            m_currentTrackers.AddToTail( tracker );
+            // tracker->valid = true;
+            tmpTrackers.AddToTail( tracker );
         }
     }
+
+    for ( int i = 0; i < m_currentTrackers.Count(); i++ )
+    {
+        bool foundMatch = false;
+        for ( int j = 0; j < tmpTrackers.Count(); j++ )
+        {
+            // if ( V_strcmp( m_currentTrackers[i]->name, tmpTrackers[j]->name ) != 0 )
+            if ( m_currentTrackers[i]->type == tmpTrackers[j]->type )
+            {
+                foundMatch = true;
+                break;
+            }
+        }
+
+        // deleted tracker, free it
+        if ( !foundMatch )
+        {
+            // free(m_currentTrackers[i]);
+            delete m_currentTrackers[i];
+        }
+    }
+
+    m_currentTrackers.Purge();
+    m_currentTrackers.CopyArray( tmpTrackers.Base(), tmpTrackers.Count() );
+
+    // m_allTrackers.Purge();
+    // m_allTrackers.CopyArray( tmpTrackers.Base(), tmpTrackers.Count() );
+
+    /*for ( int i = 0; i < m_currentTrackers.Count(); i++ )
+    {
+        // m_currentTrackers[i]->valid = false;
+        tmpTrackers[i] = m_currentTrackers[i];
+    }*/
 }
 
 
@@ -492,7 +701,7 @@ void VRSystem::GetFOVOffset( VREye eye, float &aspectRatio, float &hFov )
 	hFov = atan(w / 2.0f) * 180 / 3.141592654 * 2;
     hFov = RAD2DEG(2.0f * atan(h / 2.0f));
 	//g_verticalFOV = atan(h / 2.0f) * 180 / 3.141592654 * 2;
-	aspectRatio = w / h;
+	// aspectRatio = w / h;
 }
 
 
@@ -554,7 +763,7 @@ void VRSystem::UpdateViewParams()
         GetFOVOffset( VREye::Left, viewParams.aspect, viewParams.fov );
     }
 
-    viewParams.aspect = (float)viewParams.width / (float)viewParams.height;
+    // viewParams.aspect = (float)viewParams.width / (float)viewParams.height;
 
 	m_currentViewParams = viewParams;
 }
@@ -562,6 +771,9 @@ void VRSystem::UpdateViewParams()
 
 VRViewParams VRSystem::GetViewParams()
 {
+    if ( /*m_currentViewParams.fov == 0.0 ||*/ m_currentViewParams.aspect == 0.0 )
+        UpdateViewParams();
+
 	return m_currentViewParams;
 }
 
@@ -573,6 +785,19 @@ bool VRSystem::Enable()
 {
 	// in case we're retrying after an error and shutdown wasn't called
 	Disable();
+
+#if ENGINE_ASW
+    if ( !CommandLine()->FindParm("-vrapi") )
+    {
+        Warning("[VR] did not load shaderapi (run with -vrapi)\n");
+        return false;
+    }
+    else if ( g_pShaderAPI == NULL )
+    {
+        Warning("[VR] shaderapi failed to load earlier (somehow)\n");
+        return false;
+    }
+#endif
 
 	vr::HmdError error = vr::VRInitError_None;
 
@@ -597,17 +822,52 @@ bool VRSystem::Enable()
     g_VRInt.AddActiveActionSet("/actions/base");
     g_VRInt.AddActiveActionSet("/actions/main");
 
+    g_pOVRInput->SetDominantHand( vr_lefthand.GetBool() ? vr::TrackedControllerRole_LeftHand : vr::TrackedControllerRole_RightHand );
+
+    g_VRIK.Init();
+
+    // g_VRShared.LoadDeviceTypes();
+    // LoadDeviceTypes( "VR" );
+    // LoadDeviceTypes( "MOD" );
+    // LoadDeviceTypes( "GAME" );
+
+    /*if ( m_deviceType == nullptr )
+    {
+        // load unknown device type
+        m_deviceType = GetDeviceType( "unknown" );
+
+        if ( m_deviceType == nullptr )
+        {
+            // technically not mandatory at the moment, so i don't need to really disable it, but this is easier
+            Warning( "[VR] ERROR: no valid device type (not even unknown type!!!)\n" );
+            Disable();
+            return false;
+        }
+    }*/
+
 	active = true;
     m_scale = DEFAULT_VR_SCALE;
 
     // convienence
+#if ENGINE_CSGO
     engine->ClientCmd_Unrestricted("engine_no_focus_sleep 0");
+#endif
+
     vr_active_hack.SetValue("1");
 
 #if ENGINE_NEW
     g_wasPostProcessingOn = mat_postprocess_enable.GetBool();
     mat_postprocess_enable.SetValue("0");
 #endif
+
+    /*C_VRBasePlayer* pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
+    if ( pPlayer )
+    {
+        pPlayer->OnVREnabled();
+    }*/
+
+    if ( !m_inMap && vr_renderthread.GetBool() )
+        StartThread();
 
 	Update( 0.0 );
 	return true;
@@ -616,6 +876,9 @@ bool VRSystem::Enable()
 
 bool VRSystem::Disable()
 {
+    if ( !m_inMap && vr_renderthread.GetBool() )
+        StopThread();
+
 	active = false;
 
     if (g_pOVR != NULL)
@@ -641,12 +904,25 @@ bool VRSystem::Disable()
     g_VRInt.activeActionSetCount = 0;
 
     // i would save the old value, but nobody changes this anyway
+#if ENGINE_CSGO
     engine->ClientCmd_Unrestricted("engine_no_focus_sleep 50");
+#endif
+
     vr_active_hack.SetValue("0");
     
 #if ENGINE_NEW
     mat_postprocess_enable.SetValue( g_wasPostProcessingOn );
 #endif
+
+    m_currentActions.PurgeAndDeleteElements();
+    // m_allTrackers.PurgeAndDeleteElements();
+    m_currentTrackers.Purge();
+
+    /*C_VRBasePlayer* pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
+    if ( pPlayer )
+    {
+        pPlayer->OnVRDisabled();
+    }*/
 
 	return true;
 }
@@ -667,10 +943,11 @@ bool VRSystem::IsDX11()
 bool VRSystem::NeedD3DInit()
 {
 #if ENGINE_ASW
-    return false;
-#else
-	return IsDX11() ? false : (g_VRInt.d3d9Device == NULL || g_VRInt.d3d11TextureL == NULL || g_VRInt.d3d11TextureR == NULL);
+    if ( !g_VRSupported )
+        return false;
 #endif
+
+	return IsDX11() ? false : (g_VRInt.d3d9Device == NULL || g_VRInt.d3d11TextureL == NULL || g_VRInt.d3d11TextureR == NULL);
 }
 
 
@@ -691,6 +968,10 @@ void VRSystem::Submit( ITexture* rtEye, VREye eye )
 {
 #if ENGINE_QUIVER || ENGINE_CSGO
 	g_VRInt.Submit( IsDX11(), materials->VR_GetSubmitInfo( rtEye ), ToOVREye( eye ) );
+
+#elif ENGINE_ASW
+    g_VRInt.Submit( IsDX11(), NULL, ToOVREye( eye ) );
+
 #else
 	// TODO: use the hack gmod vr uses
     g_VRInt.Submit( IsDX11(), NULL, ToOVREye( eye ) );

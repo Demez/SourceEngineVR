@@ -14,6 +14,88 @@ extern vr::IVRInput*        g_pOVRInput;
 
 VRSystemInternal            g_VRInt;
 
+IShaderAPI *g_pShaderAPI = 0;
+/*IShaderDeviceMgr* g_pShaderDeviceMgr = 0;
+IShaderDevice *g_pShaderDevice = 0;
+IShaderShadow* g_pShaderShadow = 0;*/
+
+static CSysModule* g_ShaderHInst;
+static CreateInterfaceFn g_shaderApiFactory;
+extern bool g_VRSupported;
+
+//-----------------------------------------------------------------------------
+// Creates/destroys the shader implementation for the selected API
+//-----------------------------------------------------------------------------
+CreateInterfaceFn CreateShaderAPI( char const* pShaderDLL )
+{
+    if ( !pShaderDLL )
+        return 0;
+
+    // Clean up the old shader
+    // DestroyShaderAPI();
+
+    // Load the new shader
+    g_ShaderHInst = Sys_LoadModule( pShaderDLL );
+
+    // Error loading the shader
+    if ( !g_ShaderHInst )
+        return 0;
+
+    // Get our class factory methods...
+    return Sys_GetFactory( g_ShaderHInst );
+}
+
+void DestroyShaderAPI()
+{
+    if (g_ShaderHInst)
+    {
+        // NOTE: By unloading the library, this will destroy m_pShaderAPI
+        Sys_UnloadModule( g_ShaderHInst );
+        g_pShaderAPI = 0;
+        g_ShaderHInst = 0;
+    }
+}
+
+
+bool VRSystemInternal::InitShaderAPI()
+{
+    // if ( !CommandLine()->FindParm("-vrapi") )
+    //    return false;
+
+    g_shaderApiFactory = CreateShaderAPI( "shaderapidx9.dll" );
+    if ( !g_shaderApiFactory )
+    {
+        return false;
+    }
+
+    // g_pShaderDeviceMgr = (IShaderDeviceMgr*)g_shaderApiFactory( SHADER_DEVICE_MGR_INTERFACE_VERSION, 0 );
+    // if ( !g_pShaderDeviceMgr )
+    //     return false;
+
+    // g_pHWConfig = (IHardwareConfigInternal*)shaderApiFn( MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION, 0 );
+    // if ( !g_pHWConfig )
+    //     return false;
+
+    // TODO: use this to check if this is a vr supported shaderapi, if this exists, it does support vr
+    /*g_pShaderAPIVR = (IShaderAPIVR*)g_shaderApiFactory( SHADERAPI_VR_INTERFACE_VERSION, 0 );
+    if ( !g_pShaderAPIVR )
+        return false;*/
+
+    g_pShaderAPI = (IShaderAPI*)g_shaderApiFactory( SHADERAPI_INTERFACE_VERSION, 0 );
+    if ( !g_pShaderAPI )
+        return false;
+
+    /*g_pShaderDevice = (IShaderDevice*)g_shaderApiFactory( SHADER_DEVICE_INTERFACE_VERSION, 0 );
+    if ( !g_pShaderDevice )
+        return false;
+
+    g_pShaderShadow = (IShaderShadow*)g_shaderApiFactory( SHADERSHADOW_INTERFACE_VERSION, 0 );
+    if ( !g_pShaderShadow )
+        return false;*/
+
+    return true;
+}
+
 
 void VRSystemInternal::OpenSharedResource( HANDLE eyeHandle, VREye eye )
 {
@@ -85,6 +167,7 @@ void VRSystemInternal::WaitGetPoses()
 }
 
 
+// GetComponentStateForBinding
 int VRSystemInternal::SetActionManifest( const char* fileName )
 {
     char currentDir[MAX_STR_LEN] = "\0";
@@ -199,6 +282,9 @@ void VRSystemInternal::ResetActiveActionSets()
 }
 
 
+extern ConVar vr_one_rt_test;
+
+
 void VRSystemInternal::Submit( bool isDX11, void* submitData, vr::EVREye eye )
 {
     vr::Texture_t vrTexture;
@@ -214,20 +300,26 @@ void VRSystemInternal::Submit( bool isDX11, void* submitData, vr::EVREye eye )
     }
     else
     {
-#if !ENGINE_ASW
-        IDirect3DQuery9* pEventQuery = nullptr;
-        d3d9Device->CreateQuery(D3DQUERYTYPE_EVENT, &pEventQuery);
-
-        if (pEventQuery != nullptr)
+#if 1 //!ENGINE_ASW
+        if ( g_VRSupported )
         {
-            pEventQuery->Issue(D3DISSUE_END);
-            while (pEventQuery->GetData(nullptr, 0, D3DGETDATA_FLUSH) != S_OK);
-            pEventQuery->Release();
+            IDirect3DQuery9* pEventQuery = nullptr;
+            d3d9Device->CreateQuery(D3DQUERYTYPE_EVENT, &pEventQuery);
+
+            if (pEventQuery != nullptr)
+            {
+                pEventQuery->Issue(D3DISSUE_END);
+                while (pEventQuery->GetData(nullptr, 0, D3DGETDATA_FLUSH) != S_OK);
+                pEventQuery->Release();
+            }
         }
 #endif
 
         vrTexture = {
-            eye == vr::EVREye::Eye_Left ? d3d11TextureL : d3d11TextureR,
+            // eye == vr::EVREye::Eye_Left ? d3d11TextureL : d3d11TextureR,
+            eye == vr::EVREye::Eye_Left ? d3d11TextureL : (vr_one_rt_test.GetBool() ? d3d11TextureL : d3d11TextureR),
+            // (eye == vr::EVREye::Eye_Right && !vr_one_rt_test.GetBool()) ? d3d11TextureR : d3d11TextureL,
+            // d3d11TextureL,
             vr::TextureType_DirectX,
             vr::ColorSpace_Auto
         };
@@ -276,8 +368,9 @@ void VRSystemInternal::CalcTextureBounds( float &aspect, float &fov )
     // gmod vr returns different values for each (the fov one seems much more accurate, right around 90 fov)
     // gmod vr also returns like 0.83 for aspect
 
-    // aspect = tanHalfFov.x / tanHalfFov.y;
+    aspect = tanHalfFov.x / tanHalfFov.y;
     // fov = 2.0f * RAD2DEG(atan(tanHalfFov.y));
+
     // fov = RAD2DEG(2.0f * atan(tanHalfFov.y));
     // fov = RAD2DEG(atan(tanHalfFov.y / 2.0f));
 }

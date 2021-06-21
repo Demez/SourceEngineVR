@@ -16,6 +16,9 @@ class CVRBasePlayerShared;
 #include <mathlib/vmatrix.h>
 
 
+// you know, *technically* i don't need this with the abstracted bone system
+// i could just have the type be EVRBone instead, theoretically allowing for trackers for every single bone
+// even though that won't ever happen, unless valve's BCI headset will do that, idk
 enum class EVRTracker
 {
     INVALID = 0,
@@ -63,23 +66,30 @@ public:
     //---------------------------------------------------------------
     // convenience tracker type checks
     //---------------------------------------------------------------
-    virtual inline bool         IsHeadset()     { return (m_type == EVRTracker::HMD); }
-    virtual inline bool         IsHand()        { return (m_type == EVRTracker::LHAND || m_type == EVRTracker::RHAND); }
-    virtual inline bool         IsFoot()        { return (m_type == EVRTracker::LFOOT || m_type == EVRTracker::RFOOT); }
-    virtual inline bool         IsHip()         { return (m_type == EVRTracker::HIP); }
+    inline bool                 IsType( EVRTracker type ) { return (m_type == type); }
 
-    virtual inline bool         IsLeftHand()    { return (m_type == EVRTracker::LHAND); }
-    virtual inline bool         IsRightHand()   { return (m_type == EVRTracker::RHAND); }
-    virtual inline bool         IsLeftFoot()    { return (m_type == EVRTracker::LFOOT); }
-    virtual inline bool         IsRightFoot()   { return (m_type == EVRTracker::RFOOT); }
+    inline bool                 IsHeadset()     { return (m_type == EVRTracker::HMD); }
+    inline bool                 IsHand()        { return (m_type == EVRTracker::LHAND || m_type == EVRTracker::RHAND); }
+    inline bool                 IsFoot()        { return (m_type == EVRTracker::LFOOT || m_type == EVRTracker::RFOOT); }
+    inline bool                 IsHip()         { return (m_type == EVRTracker::HIP); }
+
+    inline bool                 IsLeftHand()    { return (m_type == EVRTracker::LHAND); }
+    inline bool                 IsRightHand()   { return (m_type == EVRTracker::RHAND); }
+    inline bool                 IsLeftFoot()    { return (m_type == EVRTracker::LFOOT); }
+    inline bool                 IsRightFoot()   { return (m_type == EVRTracker::RFOOT); }
 
     //---------------------------------------------------------------
     // other
     //---------------------------------------------------------------
 
+#ifdef CLIENT_DLL
     virtual void                SetupBoneName();
     virtual inline const char*  GetBoneName() { return m_boneName; }
     virtual inline const char*  GetRootBoneName() { return m_boneRootName; }
+#endif
+
+    virtual void               LoadModel();
+    inline const char*         GetModelName() { return m_modelName; }
 
     //---------------------------------------------------------------
     // position/angles
@@ -100,6 +110,9 @@ public:
     const char*                 m_trackerName;
     const char*                 m_boneName;
     const char*                 m_boneRootName;
+
+    const char*                 m_modelName;
+    const model_t*              m_model;
 
     Vector                      m_posOffset;
     Vector                      m_pos;

@@ -73,6 +73,8 @@ const Vector& CVRGameMovement::GetPlayerMaxs( void ) const
 }*/
 
 
+// ideally this could run on the client without going through the prediction code,
+// but idk where i would do that on client and server right now
 void CVRGameMovement::PlayerMove()
 {
 	BaseClass::PlayerMove();
@@ -82,19 +84,52 @@ void CVRGameMovement::PlayerMove()
 	if ( !pMove->vr_active )
 		return;
 
-	HandlePlaySpaceMovement( pMove );
+	switch (player->GetMoveType())
+	{
+	case MOVETYPE_WALK:
+		PlaySpaceMoveWalk( pMove );
+		break;
+
+	// DEMEZ TODO: handle these
+	case MOVETYPE_NONE:
+		PlaySpaceMoveFrozen( pMove );
+		break;
+
+	case MOVETYPE_LADDER:
+		// PlaySpaceMoveLadder( pMove );
+		DevMsg( 1, "[VR] Unimplemented VR movetype %i on (%i) 0=cl 1=sv\n", player->GetMoveType(), player->IsServer() );
+		break;
+
+	case MOVETYPE_NOCLIP:
+	case MOVETYPE_FLY:
+	case MOVETYPE_FLYGRAVITY:
+	case MOVETYPE_ISOMETRIC:
+	case MOVETYPE_OBSERVER:
+	default:
+		DevMsg( 1, "[VR] Unimplemented VR movetype %i on (%i) 0=cl 1=sv\n", player->GetMoveType(), player->IsServer() );
+		break;
+	}
 }
 
 
 void CVRGameMovement::ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove )
 {
 	BaseClass::ProcessMovement( pPlayer, pMove );
-	ProcessVRMovement( (CVRBasePlayerShared*)pPlayer, (CVRMoveData*)pMove );
+	// ProcessVRMovement( (CVRBasePlayerShared*)pPlayer, (CVRMoveData*)pMove );
 }
 
 
-void CVRGameMovement::HandlePlaySpaceMovement( CVRMoveData *pMove )
+void CVRGameMovement::PlaySpaceMoveWalk( CVRMoveData *pMove )
 {
+	// subject to change
+	if ( CheckForLadderModelHack() )
+	{
+		if ( PlaySpaceMoveLadder( pMove ) )
+		{
+			return;
+		}
+	}
+
 	Vector vrPos = pMove->vr_originOffset;
 	vrPos.z = 0;
 
@@ -187,6 +222,38 @@ void CVRGameMovement::HandlePlaySpaceMovement( CVRMoveData *pMove )
 		engine->Con_NPrintf( 26, "Should Move Player: %s\n", movePlayerOrigin ? "YES" : "NO" );
 		engine->Con_NPrintf( 27, "Is Moving Up: %s\n", isMovingUp ? "YES" : "NO" );
 	}
+}
+
+
+
+void CVRGameMovement::PlaySpaceMoveFrozen( CVRMoveData *pMove )
+{
+	GetVRPlayer()->m_viewOriginOffset = pMove->vr_originOffset;
+}
+
+
+bool CVRGameMovement::PlaySpaceMoveLadder( CVRMoveData *pMove )
+{
+	// DEMEZ TODO: implement
+	// plans are to have a new vr ladder entity to check for, if it does not exist, just use PlaySpaceMoveFrozen()
+	// otherwise, use the hand trackers to check if it's coliding with the ladder physics models (which is why i need a new entity for it)
+	// and we are holding use (and maybe trigger?), if so, then have the player in fly or noclip movement and move the player based on hand movements
+	// (though then this wouldn't be called from MOVETYPE_LADDER, probably MOVETYPE_WALK still)
+	// should i have the player fall if they let go with both hands? idk
+
+	// or i could in theory, update the existing ladder entities and try to generate some box collisions? idk
+	// or do what's in CheckForLadderModelHack(), might end up doing that tbh
+
+	PlaySpaceMoveFrozen( pMove );
+
+	return true;
+}
+
+
+bool CVRGameMovement::CheckForLadderModelHack()
+{
+	// some hack that could check the model in trace_t for if it's a known ladder model or if it has ladder in it's name
+	return false;
 }
 
 

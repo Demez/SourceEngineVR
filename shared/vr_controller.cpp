@@ -23,6 +23,8 @@ ConVar vr_pickup_angular("vr_pickup_angular", "3600", FCVAR_REPLICATED);
 ConVar vr_pickup_damp_speed("vr_pickup_damp_speed", "500", FCVAR_REPLICATED);
 ConVar vr_pickup_damp_angular("vr_pickup_damp_angular", "3600", FCVAR_REPLICATED);
 
+ConVar vr_pointer_lerp("vr_pointer_lerp", "0.2", FCVAR_REPLICATED);
+
 
 extern CMoveData* g_pMoveData;
 
@@ -75,7 +77,7 @@ void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vec
 
 		if ( !prevPos.IsZero() )
 		{
-			NDebugOverlay::Line( prevPos, curPos, color.x, color.y, color.z, false, 0.0f );
+			debugoverlay->AddLineOverlay( prevPos, curPos, color.x, color.y, color.z, false, 0.0f );
 		}
 
 		prevPos = curPos;
@@ -90,9 +92,6 @@ void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vec
 void CVRController::Spawn()
 {
 	BaseClass::Spawn();
-
-	/*SetSolid( SOLID_BBOX );	
-	AddSolidFlags( FSOLID_NOT_SOLID );*/
 
 	m_pLastUseEntity = NULL;
 	m_pGrabbedObject = NULL;
@@ -139,25 +138,14 @@ void CVRController::UpdateTracker( CmdVRTracker& cmdTracker )
 
 		Vector lerpedPointDir(pointDir * 32);
 
-		// does nothing
-		lerpedPointDir = Lerp( 0.2, m_prevPointDir, lerpedPointDir );
-
-		/*if ( m_nextPointSaveTime < gpGlobals->curtime )
-		{
-			m_prevPointDir = pointDir;
-			m_nextPointSaveTime = gpGlobals->curtime + 0.1;
-		}*/
+		lerpedPointDir = Lerp( vr_pointer_lerp.GetFloat(), m_prevPointDir, lerpedPointDir );
 
 		m_prevPointDir = lerpedPointDir;
 
-		// TODO: do this better, and probably lerp the angles so the pointDir is smoothed like in neos vr
-		// maybe make a beam for it?
-		// NDebugOverlay::Line( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 32), 203, 66, 245, false, 0.0f );
-
 		// idk about control
 		// AddCoolLine( GetAbsOrigin(), GetAbsOrigin() + lerpedPointDir, 0.0f, false );
-		// DrawPointerQuadratic( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 4), GetAbsOrigin() + lerpedPointDir, 5.0f, Vector(203, 66, 245), 0.5f, 1.0f );
-		DrawBeamQuadratic( GetAbsOrigin(), GetAbsOrigin() + (pointDir * 4), GetAbsOrigin() + lerpedPointDir, 1.0f, Vector(203, 66, 245), 0.5f, 1.0f );
+		DrawPointerQuadratic( GetPointPos(), GetPointPos() + (pointDir * 4), GetPointPos() + lerpedPointDir, 5.0f, Vector(203, 66, 245), 0.5f, 1.0f );
+		// DrawBeamQuadratic( GetPointPos(), GetPointPos() + (pointDir * 4), GetPointPos() + lerpedPointDir, 1.0f, Vector(203, 66, 245), 0.5f, 1.0f );
 	}
 #endif
 }
@@ -397,9 +385,32 @@ Vector CVRController::GetPalmDir()
 }
 
 
+
+// TODO: have this offset from the center of the controller slightly
+Vector CVRController::GetPointPos()
+{
+	// temp hack
+	if ( IsLeftHand() )
+		return GetAbsOrigin() + Vector(-0.006119, 0.025944, 0.032358);
+	else
+		return GetAbsOrigin() + Vector(0.006119, 0.025944, 0.032358);
+}
+
+
 Vector CVRController::GetPointDir()
 {
-	QAngle angles = m_ang;
+	Vector point;
+	AngleVectors( GetPointAng(), &point );
+
+	return point;
+}
+
+
+// TODO: adjust this for other controller types
+// (but then the server needs to know the hardware used, hmmm, can i get it with openvr?)
+QAngle CVRController::GetPointAng()
+{
+	QAngle angles = m_absAng;
 
 	VMatrix mat, rotateMat, outMat;
 	MatrixFromAngles( angles, mat );
@@ -407,10 +418,7 @@ Vector CVRController::GetPointDir()
 	MatrixMultiply( mat, rotateMat, outMat );
 	MatrixToAngles( outMat, angles );
 
-	Vector point;
-	AngleVectors( angles, &point );
-
-	return point;
+	return angles;
 }
 
 

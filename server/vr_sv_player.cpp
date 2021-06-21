@@ -195,4 +195,29 @@ void CVRBasePlayer::PickupObject( CBaseEntity *pObject, bool bLimitMassAndSize )
 }
 
 
+void CVRBasePlayer::SetAnimation( PLAYER_ANIM playerAnim )
+{
+	int animDesired;
+	Activity idealActivity = ACT_DIERAGDOLL;
+
+	SetActivity( idealActivity );
+
+	// animDesired = SelectWeightedSequence( Weapon_TranslateActivity ( idealActivity ) );
+	animDesired = SelectWeightedSequence( idealActivity );
+
+	if ( animDesired == -1 )
+	{
+		animDesired = 0;
+	}
+
+	// Already using the desired animation?
+	if ( GetSequence() == animDesired )
+		return;
+
+	m_flPlaybackRate = 1.0;
+	ResetSequence( animDesired );
+	SetCycle( 0 );
+}
+
+
 

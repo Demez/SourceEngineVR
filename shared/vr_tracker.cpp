@@ -19,9 +19,6 @@ ConVar vr_interp_trackers("vr_interp_trackers", "0.1");
 #endif
 
 
-#define TRACKER_MODEL "models/props_junk/PopCan01a.mdl"
-
-
 // ==============================================================
 
 
@@ -67,7 +64,7 @@ short GetTrackerIndex(const char* name)
 
 EVRTracker GetTrackerEnum( const char* name )
 {
-    return (EVRTracker)GetTrackerIndex(name);
+    return (EVRTracker)(GetTrackerIndex(name) + 1);
 }
 
 EVRTracker GetTrackerEnum( short index )
@@ -96,6 +93,12 @@ void CVRTracker::Spawn()
     m_ang.Init();
     m_absPos.Init();
     m_absAng.Init();
+}
+
+
+void CVRTracker::LoadModel()
+{
+    
 }
 
 
@@ -137,17 +140,6 @@ void CVRTracker::InitTracker(CmdVRTracker& cmdTracker, CVRBasePlayerShared* pPla
     m_trackerName = cmdTracker.name;
     m_type = GetTrackerEnum(cmdTracker.index);
 
-    // a bit dumb
-    if (!IsHeadset())
-    {
-        // use a temporary model for visualizing it's position
-        /*bool precache = IsPrecacheAllowed();
-        SetAllowPrecache( true );
-        PrecacheModel( TRACKER_MODEL );
-        SetModel( TRACKER_MODEL );
-        SetAllowPrecache( precache );*/
-    }
-
     m_posOffset = cmdTracker.pos;
     m_pos = cmdTracker.pos;
     m_ang = cmdTracker.ang;
@@ -155,7 +147,9 @@ void CVRTracker::InitTracker(CmdVRTracker& cmdTracker, CVRBasePlayerShared* pPla
     SetAbsOrigin(pPlayer->GetAbsOrigin() + m_posOffset);
     SetAbsAngles(m_ang);
 
+#ifdef CLIENT_DLL
     SetupBoneName();
+#endif
 
     m_bInit = true;
 }
@@ -167,7 +161,6 @@ void CVRTracker::UpdateTracker(CmdVRTracker& cmdTracker)
     {
         // tf happened
         Warning("[VR] Tracker: where did the player go??\n");
-        // UTIL_Remove( this );
         return;
     }
 
@@ -190,11 +183,13 @@ void CVRTracker::UpdateTracker(CmdVRTracker& cmdTracker)
     Vector trackerPos = cmdTracker.pos;
     QAngle trackerAng = cmdTracker.ang;
 
-// TODO: test this
+// TODO: maybe get rid of this?
 #if 0 // def CLIENT_DLL
     if ( m_pPlayer->IsLocalPlayer() )
     {
         // rip data directly from g_VR (is this even faster?)
+        // the only way this would be worth it is if i didn't send tracker updates every frame
+        // and only every x frames, which i doubt i would do for this
         VRHostTracker* localTracker = g_VR.GetTrackerByName( m_trackerName );
 
         // did it get nuked somehow?
@@ -222,57 +217,58 @@ void CVRTracker::UpdateTracker(CmdVRTracker& cmdTracker)
     VectorYawRotate(m_posOffset, viewRotation, finalPos);
     m_posOffset = finalPos;
 
-    m_ang = trackerAng;
-    m_ang.y += viewRotation;
+    m_absAng = m_ang = trackerAng;
+    m_absAng.y += viewRotation;
 
     SetAbsOrigin(m_pPlayer->GetAbsOrigin() + m_posOffset);
-    SetAbsAngles(m_ang);
 
 #ifdef CLIENT_DLL
     if ( !IsHeadset() )
         NDebugOverlay::Axis( GetAbsOrigin(), GetAbsAngles(), 5, true, 0.0f );
 
-    NDebugOverlay::Text( GetAbsOrigin(), m_trackerName, true, 0.0f );
+    // NDebugOverlay::Text( GetAbsOrigin(), m_trackerName, true, 0.0f );
 #endif
-
 }
 
 
+#ifdef CLIENT_DLL
 void CVRTracker::SetupBoneName()
 {
     m_boneName = "";
     m_boneRootName = "";
 
+    C_VRBasePlayer* ply = (C_VRBasePlayer*)m_pPlayer;
+
     if ( m_type == EVRTracker::HMD )
     {
-        m_boneName = "ValveBiped.Bip01_Head1";
-        m_boneRootName = "ValveBiped.Bip01_Spine1"; // idfk
+        m_boneName = ply->GetBoneName( EVRBone::Head );
+        m_boneRootName = ply->GetBoneName( EVRBone::Spine ); // idk
     }
     else if ( m_type == EVRTracker::LHAND )
     {
-        m_boneName = "ValveBiped.Bip01_L_Hand";
-        m_boneRootName = "ValveBiped.Bip01_L_Clavicle";
+        m_boneName = ply->GetBoneName( EVRBone::LHand );
+        m_boneRootName = ply->GetBoneName( EVRBone::LShoulder );
     }
     else if ( m_type == EVRTracker::RHAND )
     {
-        m_boneName = "ValveBiped.Bip01_R_Hand";
-        m_boneRootName = "ValveBiped.Bip01_R_Clavicle";
+        m_boneName = ply->GetBoneName( EVRBone::RHand );
+        m_boneRootName = ply->GetBoneName( EVRBone::RShoulder );
     }
     else if ( m_type == EVRTracker::HIP )
     {
-        m_boneName = "ValveBiped.Bip01_Pelvis";
-        m_boneRootName = "ValveBiped.Bip01_Pelvis";
+        m_boneName = ply->GetBoneName( EVRBone::Pelvis );
+        m_boneRootName = ply->GetBoneName( EVRBone::Pelvis );
     }
     else if ( m_type == EVRTracker::LFOOT )
     {
-        m_boneName = "ValveBiped.Bip01_L_Foot";
-        m_boneRootName = "ValveBiped.Bip01_L_Thigh";
+        m_boneName = ply->GetBoneName( EVRBone::LFoot );
+        m_boneRootName = ply->GetBoneName( EVRBone::LThigh );
     }
     else if ( m_type == EVRTracker::RFOOT )
     {
-        m_boneName = "ValveBiped.Bip01_R_Foot";
-        m_boneRootName = "ValveBiped.Bip01_R_Thigh";
+        m_boneName = ply->GetBoneName( EVRBone::RFoot );
+        m_boneRootName = ply->GetBoneName( EVRBone::RThigh );
     }
 }
-
+#endif
 

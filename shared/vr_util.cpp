@@ -259,3 +259,69 @@ void LocalToWorld( const matrix3x4_t& matWorldCoord, const Vector& localPos, con
 	ConcatTransforms( matWorldCoord, matEntityToParent, outCoord );
 }
 
+
+void DebugAxis( const Vector &position, const QAngle &angles, float size, bool noDepthTest, float flDuration )
+{
+	Vector xvec, yvec, zvec;
+	AngleVectors( angles, &xvec, &yvec, &zvec );
+
+	xvec = position + (size * xvec);
+	yvec = position - (size * yvec); // Left is positive
+	zvec = position + (size * zvec);
+
+	debugoverlay->AddLineOverlay( position, xvec, 255, 0, 0, noDepthTest, flDuration );
+	debugoverlay->AddLineOverlay( position, yvec, 0, 255, 0, noDepthTest, flDuration );
+	debugoverlay->AddLineOverlay( position, zvec, 0, 0, 255, noDepthTest, flDuration );
+}
+
+
+// DEMEZ TODO: should there be an input for the type of controller?
+// or should it check openvr for it if im only going to use this on the local client?
+QAngle VR_GetPointAng( const QAngle& ang )
+{
+	QAngle angles = ang;
+
+	VMatrix mat, rotateMat, outMat;
+	MatrixFromAngles( angles, mat );
+	MatrixBuildRotationAboutAxis( rotateMat, Vector( 0, 1, 0 ), 35 );
+	MatrixMultiply( mat, rotateMat, outMat );
+	MatrixToAngles( outMat, angles );
+
+	return angles;
+}
+
+Vector VR_GetPointDir( const QAngle& ang )
+{
+	return vec3_origin;
+}
+
+Vector VR_GetPointPos( const Vector& pos )
+{
+	return vec3_origin;
+}
+
+
+#ifdef CLIENT_DLL
+extern void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vector &end, float width, const Vector &color, float scrollOffset, float flHDRColorScale );
+
+void VR_DrawPointer( const Vector& pointPos, const Vector& pointDir, Vector& prevDir )
+{
+	if ( prevDir.IsZero() )
+		prevDir = pointDir;
+
+	Vector lerpedPointDir(pointDir * 32);
+
+	lerpedPointDir = Lerp( 0.2, prevDir, lerpedPointDir );
+
+	prevDir = lerpedPointDir;
+
+	DrawPointerQuadratic( pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, 5.0f, Vector(203, 66, 245), 0.5f, 1.0f );
+	// DrawBeamQuadratic( pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, 1.0f, Vector(203, 66, 245), 0.5f, 1.0f );
+}
+
+void VR_DrawPointer( const Vector& pos, const QAngle& ang, Vector& prevDir )
+{
+	VR_DrawPointer( VR_GetPointPos(pos), VR_GetPointDir(ang), prevDir );
+}
+#endif
+

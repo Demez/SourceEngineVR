@@ -22,8 +22,16 @@ configuration
 		{
 			"$VR_CL_DIR"
 			"$OPENVR_DIR/headers"
-			// "$MINHOOK_DIR/include" [$USE_MINHOOK]
+			"$VR_DIR/comet_ik/ik/include/public"
+			"$VR_DIR/comet_ik/build/ik/include/public"
 		}
+		
+		/*library_directories
+		{
+			"$VR_DIR/comet_ik/build/$CONFIG"
+			"$VR_DIR/comet_ik/build/ik/ik.dir/$CONFIG"
+			"$VR_DIR/comet_ik/build/ik/ik_obj.dir/$CONFIG"
+		}*/
 	}
 	
 	compiler
@@ -47,6 +55,11 @@ configuration
 			"dxgi.lib"
 			"d3d11.lib"
 			"d3d9.lib" // [$VR_DX9]
+			
+			// "$VR_DIR/comet_ik/build/$CONFIG/ik.lib"
+			// "$VR_DIR/comet_ik/build/$CONFIG/ik_obj.lib"
+			"$VR_DIR/comet_ik/build/ik/$CONFIG/ik.lib"
+			"$VR_DIR/comet_ik/build/ik/ik_obj.dir/$CONFIG/ik_obj.lib"
 		}
 	}
 }
@@ -67,12 +80,16 @@ files
 		"$VR_CL_DIR/vr_viewrender.h"
 		"$VR_CL_DIR/vr_cl_player.cpp"
 		"$VR_CL_DIR/vr_cl_player.h"
+		"$VR_SH_DIR/vr_ik.cpp"
+		"$VR_SH_DIR/vr_ik.h"
 		"$VR_CL_DIR/vr_input.cpp"
 		"$VR_CL_DIR/vr_input.h"
 		"$VR_CL_DIR/vr_clientmode.cpp"
 		"$VR_CL_DIR/vr_clientmode.h"
 		"$VR_CL_DIR/vr_prediction.cpp"
 		"$VR_CL_DIR/vr_prediction.h"
+		"$VR_CL_DIR/vr_renderer.cpp"
+		"$VR_CL_DIR/vr_renderer.h"
 	}
 }
 
