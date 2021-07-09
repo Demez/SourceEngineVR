@@ -101,6 +101,11 @@ enum EVRBoneSystem
 struct VRIKInfo;
 
 
+#if ENGINE_QUIVER
+#define matrix3x4a_t matrix3x4_t
+#endif
+
+
 struct CVRBoneInfo
 {
 	CVRBoneInfo( C_VRBasePlayer* pPlayer, CStudioHdr* hdr, const char* boneName );

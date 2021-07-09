@@ -19,6 +19,7 @@ VRDeviceType::~VRDeviceType()
 void VRDeviceType::Init( const char* m_path )
 {
     // i would like to use CUtlMap, but for some reason that just crashes on the 2nd element added, idk why
+    // try using CUtlStringMap instead
     m_trackerModels.SetCount( (int)EVRTracker::COUNT );
 
     for ( int i = 0; i < m_trackerModels.Count(); i++ )

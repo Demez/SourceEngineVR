@@ -262,6 +262,7 @@ void LocalToWorld( const matrix3x4_t& matWorldCoord, const Vector& localPos, con
 
 void DebugAxis( const Vector &position, const QAngle &angles, float size, bool noDepthTest, float flDuration )
 {
+#if 0
 	Vector xvec, yvec, zvec;
 	AngleVectors( angles, &xvec, &yvec, &zvec );
 
@@ -272,6 +273,7 @@ void DebugAxis( const Vector &position, const QAngle &angles, float size, bool n
 	debugoverlay->AddLineOverlay( position, xvec, 255, 0, 0, noDepthTest, flDuration );
 	debugoverlay->AddLineOverlay( position, yvec, 0, 255, 0, noDepthTest, flDuration );
 	debugoverlay->AddLineOverlay( position, zvec, 0, 0, 255, noDepthTest, flDuration );
+#endif
 }
 
 

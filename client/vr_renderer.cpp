@@ -2,7 +2,11 @@
 #include "vr_renderer.h"
 #include "vr.h"
 #include "vr_tracker.h"
+
+#if ENGINE_NEW  // well this sucks
 #include "tier3/mdlutils.h"
+#endif
+
 #include "shaderapi/ishaderapi.h"
 #include "vr_player_shared.h"
 
@@ -89,6 +93,7 @@ ConVar vr_hand_z("vr_hand_z", "0.0", 0);
 
 void CVRTrackerRender::Draw()
 {
+#if ENGINE_NEW  // well this sucks
 	if ( g_pOVR->IsSteamVRDrawingControllers() )
 		return;
 
@@ -167,6 +172,7 @@ void CVRTrackerRender::Draw()
 		if ( m_tracker->type == EVRTracker::LHAND || m_tracker->type == EVRTracker::RHAND )
 		 	VR_DrawPointer( pos, ang, m_prevPointDir );
 	}
+#endif
 #endif
 }
 
@@ -631,8 +637,11 @@ void CVRRenderer::PrepareEyeViewSetup( CViewSetup &eyeView, VREye eye, const Vec
 
 void CVRRenderer::InitEyeRenderTargets()
 {
-	if ( !g_VR.active && !vr_dbg_rt_test.GetBool() )
+	if ( !g_VR.active || !vr_dbg_rt_test.GetBool() )
+	{
+		m_bUpdateRT = false;
 		return;
+	}
 
 	m_bUpdateRT = true;
 
@@ -647,6 +656,8 @@ void CVRRenderer::InitEyeRenderTargets()
 		mat_queue_mode.SetValue( 0 );
 		return;
 	}
+
+	Msg("[VR] Creating Eye Render Targets\n");
 
 	// if we are resizing the render targets, free the existing ones
 	// Demez TODO: there is an issue here with this: if we change the eye resolution and make new render textures when already active,
@@ -717,12 +728,15 @@ void CVRRenderer::InitEyeRenderTargets()
 
 #elif ENGINE_ASW
 
-	if ( g_VR.NeedD3DInit() )
+	if ( g_VR.active && g_pShaderAPI )
 	{
-		g_VR.InitDX9Device( g_pShaderAPI->VR_GetDevice() );
-	}
+		if ( g_VR.NeedD3DInit() )
+		{
+			g_VR.InitDX9Device( g_pShaderAPI->VR_GetDevice() );
+		}
 
-	g_VR.DX9EXToDX11( g_pShaderAPI->VR_GetSubmitInfo( leftEye ), g_pShaderAPI->VR_GetSubmitInfo( rightEye ) );
+		g_VR.DX9EXToDX11( g_pShaderAPI->VR_GetSubmitInfo( leftEye ), g_pShaderAPI->VR_GetSubmitInfo( rightEye ) );
+	}
 	
 #endif
 

@@ -1499,12 +1499,12 @@ void C_VRBasePlayer::BuildArmTransformOld( CStudioHdr *hdr, CVRTracker* pTracker
 
 	dbgUpperArmPos = shoulderPos + dbgFwd * infoUpperArm->dist * 2;
 	AngleVectors( upperarmTargetAng, &dbgFwd );
-	NDebugOverlay::Line( dbgUpperArmPos, dbgUpperArmPos + dbgFwd * infoUpperArm->dist, 255, 255, 0, true, 0.0f );
+	// NDebugOverlay::Line( dbgUpperArmPos, dbgUpperArmPos + dbgFwd * infoUpperArm->dist, 255, 255, 0, true, 0.0f );
 
 
 	dbgForeArmPos = dbgUpperArmPos + dbgFwd * infoLowerArm->dist * 2;
 	AngleVectors( forearmTargetAng, &dbgFwd );
-	NDebugOverlay::Line( dbgForeArmPos, dbgForeArmPos + dbgFwd * infoLowerArm->dist, 255, 0, 255, true, 0.0f );
+	// NDebugOverlay::Line( dbgForeArmPos, dbgForeArmPos + dbgFwd * infoLowerArm->dist, 255, 0, 255, true, 0.0f );
 	// NDebugOverlay::Axis( dbgForeArmPos, forearmTargetAng, 5.0f, true, 0.0f );
 
 

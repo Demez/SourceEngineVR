@@ -240,6 +240,7 @@ extern ConVar building_cubemaps;
 
 void CVRViewRender::RenderViewTest( const CViewSetup &view, const CViewSetup &hudViewSetup, int nClearFlags, int whatToDraw )
 {
+#if ENGINE_ASW
 	m_UnderWaterOverlayMaterial.Shutdown();					// underwater view will set
 
 	ASSERT_LOCAL_PLAYER_RESOLVABLE();
@@ -545,6 +546,7 @@ void CVRViewRender::RenderViewTest( const CViewSetup &view, const CViewSetup &hu
 	// g_WorldListCache.Flush();
 
 	m_CurrentView = view;
+#endif
 }
 
 
@@ -557,6 +559,7 @@ extern void FinishCurrentView();
 void CVRViewRender::ViewDrawSceneTest( bool bDrew3dSkybox, SkyboxVisibility_t nSkyboxVisible, const CViewSetup &view, 
 								int nClearFlags, view_id_t viewID, bool bDrawViewModel, int baseDrawFlags, ViewCustomVisibility_t *pCustomVisibility )
 {
+#if ENGINE_ASW
 	VPROF( "CViewRender::ViewDrawScene" );
 
 	// this allows the refract texture to be updated once per *scene* on 360
@@ -670,6 +673,7 @@ void CVRViewRender::ViewDrawSceneTest( bool bDrew3dSkybox, SkyboxVisibility_t nS
 	{
 		pRenderContext->FlipCulling( false );
 	}
+#endif
 }
 
 

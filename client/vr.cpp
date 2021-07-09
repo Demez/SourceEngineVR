@@ -33,8 +33,10 @@
 #include "tier0/memdbgon.h"
 
 ConVar vr_autostart("vr_autostart", "0", FCVAR_ARCHIVE, "auto start vr on level load");
+ConVar vr_mainmenu("vr_mainmenu", "1", FCVAR_ARCHIVE);
 ConVar vr_renderthread("vr_renderthread", "0", FCVAR_ARCHIVE, "use a separate thread for rendering in vr on the main menu or while loading a level");
 ConVar vr_active_hack("vr_active_hack", "0", FCVAR_CLIENTDLL, "lazy hack for anything that needs to know if vr is enabled outside of the game dlls (mouse lock)");
+
 ConVar vr_clamp_res("vr_clamp_res", "1", FCVAR_CLIENTDLL, "clamp the resolution to the screen size until the render clamping issue is figured out");
 ConVar vr_scale_override("vr_scale_override", "42.5");  // anything lower than 0.25 doesn't look right in the headset
 ConVar vr_dbg_rt_res("vr_dbg_rt_res", "2048", FCVAR_CLIENTDLL);
@@ -340,6 +342,8 @@ bool VRSystem::Init()
         {
             g_VRSupported = true;
         }
+
+        engine->ClientCmd("exec vr\n");
     }
     else
     {
@@ -349,11 +353,9 @@ bool VRSystem::Init()
     g_VRSupported = true;
 #endif
 
-    engine->ClientCmd("exec vr\n");
-
     g_VRRenderer.Init();
 
-    if ( vr_autostart.GetBool() )
+    if ( vr_autostart.GetBool() && vr_mainmenu.GetBool() )
         Enable();
 
 	return true;
@@ -427,7 +429,7 @@ void VRSystem::LevelInitPostEntity()
 {
     m_inMap = true;
 
-	if ( vr_autostart.GetBool() && !vr_renderthread.GetBool() )
+	if ( vr_autostart.GetBool() && !vr_renderthread.GetBool() && !active )
     {
         Enable();
     }
