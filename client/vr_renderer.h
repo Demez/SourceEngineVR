@@ -3,6 +3,7 @@
 #include "vr.h"
 #include "view_shared.h"
 
+class CVRController;
 
 class CVRRenderThread: public CThread
 {
@@ -58,6 +59,7 @@ public:
 
 	void PrepareEyeViewSetup( CViewSetup &eyeView, VREye eye, const Vector& origin, const QAngle& angles );
 
+	void DrawControllerPointer( CVRController* controller );
 	void DrawScreen();
 	void DrawCroppedView();
 	void DrawDebugEyeRenderTarget( IMaterial* eyeMat, int pos );
@@ -86,6 +88,8 @@ public:
 	bool m_bInTestRender;
 	bool m_bInMap;
 	bool m_bUpdateRT;
+
+	Vector m_viewOrigin;
 
 	CUtlVector< CVRTrackerRender* > m_trackers;
 };

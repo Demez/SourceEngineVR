@@ -32,6 +32,7 @@ ConVar vr_cl_interp( "vr_interp_player", "0.1", FCVAR_CLIENTDLL );
 ConVar vr_cl_hidehead( "vr_cl_hidehead", "30", FCVAR_CLIENTDLL, "Distance to hide the head by, 0 or keeps the head always visible" );
 ConVar vr_cl_headdist( "vr_cl_headdist", "0", FCVAR_CLIENTDLL, "Distance to offset the head back by" );
 ConVar vr_cl_headheight( "vr_cl_headheight", "80", FCVAR_CLIENTDLL, "height of the head from the origin" );
+ConVar vr_ik( "vr_ik", "0", FCVAR_ARCHIVE, "" );
 
 #if defined( CVRBasePlayer )
 	#undef CVRBasePlayer	
@@ -882,6 +883,9 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 		BaseClass::BuildTransformations( hdr, pos, q, newTransform, boneMask, boneComputed );
 		return;
 	}
+
+	if ( !vr_ik.GetBool() )
+		return;
 
 	UpdateBoneInformation( hdr );
 

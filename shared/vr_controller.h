@@ -13,6 +13,8 @@
 
 #include "vr_tracker.h"
 #include "vphysics_interface.h"
+#include "engine_defines.h"
+
 class CVRBasePlayerShared;
 
 #include <mathlib/vector.h>
@@ -31,6 +33,10 @@ struct vr_shadowcontrol_params_t : public hlshadowcontrol_params_t
 
 // These trackers are used for the hands only, they allow you to pickup physics props (or more in the future)
 class CVRController: public CVRTracker, public IMotionEvent
+#ifdef CLIENT_DLL
+	// DEMEZ TODO: try using this later
+	// , public CDefaultClientRenderable
+#endif
 {
 	typedef CVRTracker BaseClass;
 
@@ -40,6 +46,10 @@ public:
 
 	virtual void                InitTracker( CmdVRTracker& cmdTracker, CVRBasePlayerShared* pPlayer );
 	virtual void                UpdateTracker( CmdVRTracker& cmdTracker );
+
+#ifdef CLIENT_DLL
+	// virtual int                 DrawModel( int flags RENDER_INSTANCE_INPUT );  // i hate this macro
+#endif
 
 	//---------------------------------------------------------------
 	// Using and Grabbing entities
@@ -71,6 +81,7 @@ public:
 	//---------------------------------------------------------------
 	virtual Vector              GetPalmDir();
 	virtual Vector              GetPointDir();
+	inline virtual Vector       GetLerpedPointDir() { return m_lerpedPointDir; }
 	virtual Vector              GetPointPos();
 	virtual QAngle              GetPointAng();
 	virtual void                GetFingerBoneNames( const char* fingerBoneNames[FINGER_BONE_COUNT] );
@@ -90,12 +101,14 @@ public:
 	float                       m_contactAmount;
 	float                       m_timeToArrive;
 	float                       m_frameCount;
+	float                       m_savedRotDamping;
+	float                       m_savedMass;
 
 	Vector                      m_entLocalPos;
 	QAngle                      m_entLocalAng;
 
 	bool                        m_pointerEnabled;
-	Vector                      m_prevPointDir;
+	Vector                      m_lerpedPointDir;
 };
 
 

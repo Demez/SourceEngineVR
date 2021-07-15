@@ -14,8 +14,7 @@
 #endif
 
 
-ConVar vr_dbg_pickup("vr_dbg_pickup", "0", FCVAR_REPLICATED);
-ConVar vr_dbg_point("vr_dbg_point", "1", FCVAR_REPLICATED);
+ConVar vr_dbg_pickup("vr_dbg_pickup", "1", FCVAR_CHEAT | FCVAR_REPLICATED);
 
 ConVar vr_pickup_damp("vr_pickup_damp", "0.5", FCVAR_REPLICATED);
 ConVar vr_pickup_speed("vr_pickup_speed", "250", FCVAR_REPLICATED);
@@ -46,58 +45,20 @@ const float REDUCED_CARRY_MASS = 1.0f;
 const int PALM_DIR_MULT = 4;
 
 
-/*
-P0 = start
-P1 = control
-P2 = end
-P(t) = (1-t)^2 * P0 + 2t(1-t)*P1 + t^2 * P2
-*/
-// This is just DrawBeamQuadratic, but using NDebugOverlay instead since it's not even drawing a beam
-// i could try CViewRenderBeams, but this works for now
-#ifdef CLIENT_DLL
-void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vector &end, float width, const Vector &color, float scrollOffset, float flHDRColorScale )
-{
-	int subdivisions = 16;
-
-	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-
-	Vector prevPos;
-	prevPos.Init();
-
-	float t = 0;
-	float dt = 1.0 / (float)subdivisions;
-	for( int i = 0; i <= subdivisions; i++, t += dt )
-	{
-		float omt = (1-t);
-		float p0 = omt*omt;
-		float p1 = 2*t*omt;
-		float p2 = t*t;
-
-		Vector curPos = p0 * start + p1 * control + p2 * end;
-
-		if ( !prevPos.IsZero() )
-		{
-			debugoverlay->AddLineOverlay( prevPos, curPos, color.x, color.y, color.z, false, 0.0f );
-		}
-
-		prevPos = curPos;
-	}
-}
-
-// rip this shit from foundryhelpers_client.cpp
-// extern void AddCoolLine( const Vector &v1, const Vector &v2, unsigned long iExtraFadeOffset, bool bNegateMovementDir );
-#endif
-
-
 void CVRController::Spawn()
 {
 	BaseClass::Spawn();
 
 	m_pLastUseEntity = NULL;
 	m_pGrabbedObject = NULL;
-	m_prevPointDir.Init();
-	m_pointerEnabled = false;
+	m_lerpedPointDir.Init();
+	m_pointerEnabled = true;
 }
+
+// blech
+#ifdef PORTAL_DLL
+#define physenv physenv_main
+#endif
 
 
 void CVRController::InitTracker( CmdVRTracker& cmdTracker, CVRBasePlayerShared* pPlayer )
@@ -128,26 +89,18 @@ void CVRController::UpdateTracker( CmdVRTracker& cmdTracker )
 		UpdateObject();
 	}
 
-#ifdef CLIENT_DLL
-	if ( vr_dbg_point.GetBool() )
-	{
-		Vector pointDir = GetPointDir();
+	// update pointer lerping
+	// DEMEZ TODO: add a trace check for the end point up to 32x away and scale the pointer lerping accordingly
+	Vector pointDir = GetPointDir();
 
-		if ( m_prevPointDir.IsZero() )
-			m_prevPointDir = pointDir;
+	if ( m_lerpedPointDir.IsZero() )
+		m_lerpedPointDir = pointDir;
 
-		Vector lerpedPointDir(pointDir * 32);
+	Vector lerpedPointDir(pointDir * 32);
 
-		lerpedPointDir = Lerp( vr_pointer_lerp.GetFloat(), m_prevPointDir, lerpedPointDir );
+	lerpedPointDir = Lerp( vr_pointer_lerp.GetFloat(), m_lerpedPointDir, lerpedPointDir );
 
-		m_prevPointDir = lerpedPointDir;
-
-		// idk about control
-		// AddCoolLine( GetAbsOrigin(), GetAbsOrigin() + lerpedPointDir, 0.0f, false );
-		DrawPointerQuadratic( GetPointPos(), GetPointPos() + (pointDir * 4), GetPointPos() + lerpedPointDir, 5.0f, Vector(203, 66, 245), 0.5f, 1.0f );
-		// DrawBeamQuadratic( GetPointPos(), GetPointPos() + (pointDir * 4), GetPointPos() + lerpedPointDir, 1.0f, Vector(203, 66, 245), 0.5f, 1.0f );
-	}
-#endif
+	m_lerpedPointDir = lerpedPointDir;
 }
 
 
@@ -263,22 +216,24 @@ CBaseEntity* CVRController::FindEntityBase( bool mustBeInPalm )
 	CBaseEntity* pObject = NULL;
 
 	Ray_t ray;
-	ray.Init( GetAbsOrigin(), GetAbsOrigin() + boxMax, boxMin, boxMax );
+	ray.Init( searchCenter, searchCenter + boxMax, boxMin, boxMax );
 	CTraceFilterSimple traceFilter( m_pPlayer, COLLISION_GROUP_NONE );
 
 	enginetrace->TraceRay( ray, useableContents, &traceFilter, &tr );
 
 	CControllerCollideList pEntities(&ray, m_pPlayer, useableContents);
 
-	enginetrace->EnumerateEntities( GetAbsOrigin() + boxMin, GetAbsOrigin() + boxMax, &pEntities );
+	enginetrace->EnumerateEntities( searchCenter + boxMin, searchCenter + boxMax, &pEntities );
+
+	NDebugOverlay::Axis( searchCenter, GetAbsAngles(), 6, false, 0.0f);
 
 	if ( vr_dbg_pickup.GetBool() )
-		NDebugOverlay::Box( GetAbsOrigin(), boxMin, boxMax, 255, 255, 255, 1, 0);
+		NDebugOverlay::Box( searchCenter, boxMin, boxMax, 255, 255, 255, 1, 0);
 
 	Vector palmDir = GetPalmDir();
 
 	if ( vr_dbg_pickup.GetBool() )
-		NDebugOverlay::Line( GetAbsOrigin(), GetAbsOrigin() + (palmDir * PALM_DIR_MULT), 0, 255, 0, 1, 0);
+		NDebugOverlay::Line( searchCenter, searchCenter + (palmDir * PALM_DIR_MULT), 0, 255, 0, 1, 0);
 
 	float distToNearest = 99999999.0f;
 

@@ -178,15 +178,27 @@ VRHostTracker::~VRHostTracker()
 }
 
 
+// DEMEZ: TEMPORARY PLEASE CHANGE
+ConVar vr_devicehack("vr_devicehack", "0", FCVAR_ARCHIVE, "0 - oculus_cv1, 1 - valve_index");
+
 const char* VRHostTracker::GetModelName()
 {
     if ( !device )
     {
-        // TEMPORARY PLEASE CHANGE
-        device = g_VRShared.GetDeviceType( "oculus_cv1" );
+        // DEMEZ: TEMPORARY PLEASE CHANGE
+        // i just need to figure out how to get the device type from openvr, and then i can do this properly
+        // i could probably set this up in usercmd now, and move the hack there
+        // just adding a hack convar in for now for a portal vr demo
+        device = g_VRShared.GetDeviceType( vr_devicehack.GetInt() == 1 ? "valve_index" : "oculus_cv1" );
     }
 
-    return device ? device->GetTrackerModelName(type) : "";
+    if ( device == nullptr )
+    {
+        Warning("[VR] No Device Type for tracker \"%s\"", name);
+        return "";
+    }
+
+    return device->GetTrackerModelName(type);
 }
 
 
@@ -855,6 +867,9 @@ bool VRSystem::Enable()
     engine->ClientCmd_Unrestricted("engine_no_focus_sleep 0");
 #endif
 
+	// DEMEZ TODO: not require prediction in singleplayer, this is awful
+    engine->ClientCmd_Unrestricted("cl_localnetworkbackdoor 0");
+    engine->ClientCmd_Unrestricted("cl_predict 1");
     vr_active_hack.SetValue("1");
 
 #if ENGINE_NEW

@@ -143,6 +143,7 @@ void CVRViewRender::RenderViewEye( CMatRenderContextPtr &pRenderContext, const C
 		return;
 
 	g_VRRenderer.m_bInEyeRender = true;
+	g_VRRenderer.m_viewOrigin = view.origin;
 
 	CViewSetup eyeView(view);
 	g_VRRenderer.PrepareEyeViewSetup( eyeView, eye, view.origin, view.angles );

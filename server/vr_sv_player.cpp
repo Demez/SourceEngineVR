@@ -220,4 +220,11 @@ void CVRBasePlayer::SetAnimation( PLAYER_ANIM playerAnim )
 }
 
 
+void CVRBasePlayer::RumbleEffect( unsigned char index, unsigned char rumbleData, unsigned char rumbleFlags )
+{
+	if ( !m_bInVR )
+		BaseClass::RumbleEffect( index, rumbleData, rumbleFlags );
+}
+
+
 

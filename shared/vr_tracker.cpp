@@ -224,7 +224,10 @@ void CVRTracker::UpdateTracker(CmdVRTracker& cmdTracker)
 
 #ifdef CLIENT_DLL
     if ( !IsHeadset() )
+    {
         NDebugOverlay::Axis( GetAbsOrigin(), GetAbsAngles(), 5, true, 0.0f );
+        // NDebugOverlay::Box( GetAbsOrigin(), Vector(-4,-4,-4), Vector(4,4,4), 255, 255, 255, 1, 0);
+    }
 
     // NDebugOverlay::Text( GetAbsOrigin(), m_trackerName, true, 0.0f );
 #endif

@@ -48,6 +48,7 @@ public:
 	virtual void                    PlayerUse();
 	virtual void                    SendUseEvent( CBaseEntity* pUseEntity );
 	virtual void                    PickupObject( CBaseEntity *pObject, bool bLimitMassAndSize = true );
+	virtual void                    RumbleEffect( unsigned char index, unsigned char rumbleData, unsigned char rumbleFlags );
 
 	// ------------------------------------------------------------------------------------------------
 	// New VR Functions

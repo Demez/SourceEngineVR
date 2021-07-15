@@ -2,13 +2,17 @@
 #include "vr_renderer.h"
 #include "vr.h"
 #include "vr_tracker.h"
+#include "vr_controller.h"
+#include "vr_player_shared.h"
+#include "vr_cl_player.h"
+
+#include "debugoverlay_shared.h"
+#include "shaderapi/ishaderapi.h"
+#include "beamdraw.h"
 
 #if ENGINE_NEW  // well this sucks
 #include "tier3/mdlutils.h"
 #endif
-
-#include "shaderapi/ishaderapi.h"
-#include "vr_player_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -28,6 +32,9 @@ extern IShaderAPI* g_pShaderAPI;
 
 ConVar vr_nearz("vr_nearz", "5", FCVAR_CLIENTDLL);
 ConVar vr_always_draw_trackers("vr_always_draw_trackers", "1", FCVAR_CLIENTDLL);
+ConVar vr_dbg_point("vr_dbg_point", "0", FCVAR_CHEAT);
+
+extern ConVar vr_pointer_lerp;
 
 CON_COMMAND_F(vr_update_rt, "Force recreate render targets for a different resolution", FCVAR_CLIENTDLL)
 {
@@ -94,6 +101,9 @@ ConVar vr_hand_z("vr_hand_z", "0.0", 0);
 void CVRTrackerRender::Draw()
 {
 #if ENGINE_NEW  // well this sucks
+
+	// maybe use modelrender instead?
+
 	if ( g_pOVR->IsSteamVRDrawingControllers() )
 		return;
 
@@ -170,7 +180,7 @@ void CVRTrackerRender::Draw()
 		DebugAxis( pos, ang, 5, true, 0.0f );
 
 		if ( m_tracker->type == EVRTracker::LHAND || m_tracker->type == EVRTracker::RHAND )
-		 	VR_DrawPointer( pos, ang, m_prevPointDir );
+		 	VR_DrawPointer( pos, ang, m_lerpedPointDir );
 	}
 #endif
 #endif
@@ -361,6 +371,71 @@ QAngle CVRRenderer::ViewAngles()
 }
 
 
+
+/*
+P0 = start
+P1 = control
+P2 = end
+P(t) = (1-t)^2 * P0 + 2t(1-t)*P1 + t^2 * P2
+*/
+void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vector &end, float width, const Vector &color, float scrollOffset, float flHDRColorScale )
+{
+	int subdivisions = 16;
+
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+
+	Vector prevPos;
+	prevPos.Init();
+
+	float t = 0;
+	float dt = 1.0 / (float)subdivisions;
+	for( int i = 0; i <= subdivisions; i++, t += dt )
+	{
+		float omt = (1-t);
+		float p0 = omt*omt;
+		float p1 = 2*t*omt;
+		float p2 = t*t;
+
+		Vector curPos = p0 * start + p1 * control + p2 * end;
+
+		if ( !prevPos.IsZero() )
+		{
+			debugoverlay->AddLineOverlay( prevPos, curPos, color.x, color.y, color.z, false, 0.0f );
+		}
+
+		prevPos = curPos;
+	}
+}
+
+// rip this shit from foundryhelpers_client.cpp
+// extern void AddCoolLine( const Vector &v1, const Vector &v2, unsigned long iExtraFadeOffset, bool bNegateMovementDir );
+
+
+// very broken right now still with the beam
+void CVRRenderer::DrawControllerPointer( CVRController* controller )
+{
+	// if ( vr_dbg_point.GetBool() )
+	if ( controller->m_pointerEnabled )
+	{
+		Vector pointDir = controller->GetPointDir();
+		Vector lerpedPointDir = controller->GetLerpedPointDir();
+
+		Vector pointPos = controller->GetPointPos();
+		Vector color(203, 66, 245);
+
+		// if ( vr_dbg_point.GetBool() )
+		{
+			DrawPointerQuadratic( pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, 5.0f, color, 0.5f, 1.0f );
+		}
+		// holy shit this is broken
+		/*else
+		{
+			DrawBeamQuadratic( pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, 2.0f, color, 0.5f, 1.0f );
+		}*/
+	}
+}
+
+
 void CVRRenderer::DrawScreen()
 {
 	unsigned char pColor[4] = { 255, 255, 255, 255 };
@@ -500,6 +575,19 @@ void CVRRenderer::RenderShared()
 			m_trackers[i]->Draw();
 		}
 	}
+
+	// DEMEZ TODO: do this for all players somehow?
+	C_VRBasePlayer* pPlayer = GetLocalVRPlayer();
+	if ( pPlayer )
+	{
+		for ( int i = 0; i < pPlayer->m_VRTrackers.Count(); i++ )
+		{
+			if ( pPlayer->m_VRTrackers[i]->IsHand() )
+			{
+				DrawControllerPointer( (CVRController*)pPlayer->m_VRTrackers[i] );
+			}
+		}
+	}
 }
 
 
@@ -569,9 +657,8 @@ void CVRRenderer::PostRender()
 
 		if ( vr_dbg_rt.GetBool() )
 		{
-			DrawDebugEyeRenderTarget( screenMat, 0 );
-			// DrawDebugEyeRenderTarget( leftEyeMat, 0 );
-			// DrawDebugEyeRenderTarget( rightEyeMat, 1 );
+			DrawDebugEyeRenderTarget( leftEyeMat, 0 );
+			DrawDebugEyeRenderTarget( rightEyeMat, 1 );
 		}
 	}
 }
@@ -637,7 +724,7 @@ void CVRRenderer::PrepareEyeViewSetup( CViewSetup &eyeView, VREye eye, const Vec
 
 void CVRRenderer::InitEyeRenderTargets()
 {
-	if ( !g_VR.active || !vr_dbg_rt_test.GetBool() )
+	if ( !g_VR.active && !vr_dbg_rt_test.GetBool() )
 	{
 		m_bUpdateRT = false;
 		return;
@@ -771,13 +858,16 @@ void CVRRenderer::InitMaterials()
 	_rt_right_kv->SetString( "$basetexture", "_rt_vr_right" );
 
 	// TODO: this is not right, there has to be a way to copy the backbuffer
-	KeyValues *screenMatKV = new KeyValues( "UnlitGeneric" );
-	screenMatKV->SetString( "$basetexture", "_rt_FullFrameFB" );
+	//KeyValues *screenMatKV = new KeyValues( "UnlitGeneric" );
+	//screenMatKV->SetString( "$basetexture", "_rt_FullFrameFB" );
 	// screenMatKV->SetString( "$basetexture", "_rt_Fullscreen" );
 
 	leftEyeMat  = materials->CreateMaterial( "vr_left_rt", _rt_left_kv );
 	rightEyeMat = materials->CreateMaterial( "vr_right_rt", _rt_right_kv );
-	screenMat = materials->CreateMaterial( "vr_screen_rt", screenMatKV );
+	// screenMat = materials->CreateMaterial( "vr_screen_rt", screenMatKV );
+
+	// leftEyeMat = (IMaterial*)engine->LoadModel( "vr/_rt_vr_left.vmt" ); // materials->FindMaterial( "vr/_rt_vr_left", TEXTURE_GROUP_OTHER );
+	// rightEyeMat = materials->FindMaterial( "vr/_rt_vr_right", TEXTURE_GROUP_OTHER );
 }
 
 
