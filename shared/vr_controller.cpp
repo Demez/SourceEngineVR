@@ -225,8 +225,6 @@ CBaseEntity* CVRController::FindEntityBase( bool mustBeInPalm )
 
 	enginetrace->EnumerateEntities( searchCenter + boxMin, searchCenter + boxMax, &pEntities );
 
-	NDebugOverlay::Axis( searchCenter, GetAbsAngles(), 6, false, 0.0f);
-
 	if ( vr_dbg_pickup.GetBool() )
 		NDebugOverlay::Box( searchCenter, boxMin, boxMax, 255, 255, 255, 1, 0);
 

@@ -9,6 +9,7 @@
 #include "debugoverlay_shared.h"
 #include "shaderapi/ishaderapi.h"
 #include "beamdraw.h"
+#include "tier1/fmtstr.h"
 
 #if ENGINE_NEW  // well this sucks
 #include "tier3/mdlutils.h"
@@ -33,6 +34,7 @@ extern IShaderAPI* g_pShaderAPI;
 ConVar vr_nearz("vr_nearz", "5", FCVAR_CLIENTDLL);
 ConVar vr_always_draw_trackers("vr_always_draw_trackers", "1", FCVAR_CLIENTDLL);
 ConVar vr_dbg_point("vr_dbg_point", "0", FCVAR_CHEAT);
+ConVar vr_pointer_width("vr_pointer_width", "2.0", FCVAR_ARCHIVE);
 
 extern ConVar vr_pointer_lerp;
 
@@ -378,7 +380,7 @@ P1 = control
 P2 = end
 P(t) = (1-t)^2 * P0 + 2t(1-t)*P1 + t^2 * P2
 */
-void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vector &end, float width, const Vector &color, float scrollOffset, float flHDRColorScale )
+void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vector &end, const Vector &color )
 {
 	int subdivisions = 16;
 
@@ -407,6 +409,51 @@ void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vec
 	}
 }
 
+/*
+P0 = start
+P1 = control
+P2 = end
+P(t) = (1-t)^2 * P0 + 2t(1-t)*P1 + t^2 * P2
+*/
+static void DrawBeamQuadraticNew( IMaterial* material, const Vector &start, const Vector &control, const Vector &end, float width, const Vector &color, float scrollOffset )
+{
+	int subdivisions = 16;
+
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	CBeamSegDraw beamDraw;
+	beamDraw.Start( pRenderContext, subdivisions+1, material );
+
+	BeamSeg_t seg;
+	seg.m_flWidth = width;
+
+	float t = 0;
+	float u = fmod( scrollOffset, 1 );
+	float dt = 1.0 / (float)subdivisions;
+	for( int i = 0; i <= subdivisions; i++, t += dt )
+	{
+		float omt = (1-t);
+		float p0 = omt*omt;
+		float p1 = 2*t*omt;
+		float p2 = t*t;
+
+		seg.m_vPos = p0 * start + p1 * control + p2 * end;
+		seg.m_flTexCoord = u - t;
+		if ( i == 0 || i == subdivisions )
+		{
+			// HACK: fade out the ends a bit
+			seg.m_color.r = seg.m_color.g = seg.m_color.b = 0;
+			seg.m_color.a = 255;
+		}
+		else
+		{
+			seg.SetColor( color, 1.0f );
+		}
+		beamDraw.NextSeg( &seg );
+	}
+
+	beamDraw.End();
+}
+
 // rip this shit from foundryhelpers_client.cpp
 // extern void AddCoolLine( const Vector &v1, const Vector &v2, unsigned long iExtraFadeOffset, bool bNegateMovementDir );
 
@@ -423,15 +470,15 @@ void CVRRenderer::DrawControllerPointer( CVRController* controller )
 		Vector pointPos = controller->GetPointPos();
 		Vector color(203, 66, 245);
 
-		// if ( vr_dbg_point.GetBool() )
+		if ( vr_dbg_point.GetBool() )
 		{
-			DrawPointerQuadratic( pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, 5.0f, color, 0.5f, 1.0f );
+			DrawPointerQuadratic( pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, color );
 		}
 		// holy shit this is broken
-		/*else
+		else
 		{
-			DrawBeamQuadratic( pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, 2.0f, color, 0.5f, 1.0f );
-		}*/
+			DrawBeamQuadraticNew( controller->m_beamMaterial, pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, vr_pointer_width.GetFloat(), color, 0.0f );
+		}
 	}
 }
 

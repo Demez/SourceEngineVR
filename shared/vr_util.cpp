@@ -304,26 +304,26 @@ Vector VR_GetPointPos( const Vector& pos )
 
 
 #ifdef CLIENT_DLL
-extern void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vector &end, float width, const Vector &color, float scrollOffset, float flHDRColorScale );
+// extern void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vector &end, float width, const Vector &color, float scrollOffset, float flHDRColorScale );
 
 void VR_DrawPointer( const Vector& pointPos, const Vector& pointDir, Vector& prevDir )
 {
-	if ( prevDir.IsZero() )
+	/*if ( prevDir.IsZero() )
 		prevDir = pointDir;
 
 	Vector lerpedPointDir(pointDir * 32);
 
 	lerpedPointDir = Lerp( 0.2, prevDir, lerpedPointDir );
 
-	prevDir = lerpedPointDir;
+	prevDir = lerpedPointDir;*/
 
-	DrawPointerQuadratic( pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, 5.0f, Vector(203, 66, 245), 0.5f, 1.0f );
+	// DrawPointerQuadratic( pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, 5.0f, Vector(203, 66, 245), 0.5f, 1.0f );
 	// DrawBeamQuadratic( pointPos, pointPos + (pointDir * 4), pointPos + lerpedPointDir, 1.0f, Vector(203, 66, 245), 0.5f, 1.0f );
 }
 
 void VR_DrawPointer( const Vector& pos, const QAngle& ang, Vector& prevDir )
 {
-	VR_DrawPointer( VR_GetPointPos(pos), VR_GetPointDir(ang), prevDir );
+	// VR_DrawPointer( VR_GetPointPos(pos), VR_GetPointDir(ang), prevDir );
 }
 #endif
 

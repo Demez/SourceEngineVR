@@ -113,6 +113,7 @@ public:
 
     const char*                 m_modelName;
     const model_t*              m_model;
+    IMaterial*                  m_beamMaterial;
 
     Vector                      m_posOffset;
     Vector                      m_pos;

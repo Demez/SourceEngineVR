@@ -98,7 +98,10 @@ void CVRTracker::Spawn()
 
 void CVRTracker::LoadModel()
 {
-    
+#ifdef CLIENT_DLL
+    // maybe use something else in the future
+    m_beamMaterial = materials->FindMaterial( "cable/cable", TEXTURE_GROUP_OTHER );
+#endif
 }
 
 
@@ -150,6 +153,8 @@ void CVRTracker::InitTracker(CmdVRTracker& cmdTracker, CVRBasePlayerShared* pPla
 #ifdef CLIENT_DLL
     SetupBoneName();
 #endif
+
+    LoadModel();
 
     m_bInit = true;
 }
