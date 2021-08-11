@@ -16,17 +16,41 @@ VRDeviceType::~VRDeviceType()
 }
 
 
-void VRDeviceType::Init( const char* m_path )
+void VRDeviceType::Init( const char* path )
 {
+    SetDefLessFunc( m_trackerModels );
     // i would like to use CUtlMap, but for some reason that just crashes on the 2nd element added, idk why
     // try using CUtlStringMap instead
-    m_trackerModels.SetCount( (int)EVRTracker::COUNT );
+    /*m_trackerModels.SetCount( (int)EVRTracker::COUNT );
 
     for ( int i = 0; i < m_trackerModels.Count(); i++ )
     {
         m_trackerModels.Element( i ) = "";
-    }
+    }*/
 }
+
+
+// am i using macros too much?
+#define CHECK_POSE(name, pose, type) \
+    if ( V_strcmp(name, pose) == 0 ) \
+    { \
+        m_type = type; \
+    } \
+
+// VR TODO: this "pose name" setup won't work with sensors/base stations, but does that really matter?
+void VRDeviceType::SetPoseName( const char* name )
+{
+    m_name = name;
+
+    CHECK_POSE(name, "hmd", EVRDeviceType::Headset)
+    else CHECK_POSE(name, "pose_lefthand", EVRDeviceType::Controller)
+    else CHECK_POSE(name, "pose_righthand", EVRDeviceType::Controller)
+    else CHECK_POSE(name, "pose_waist", EVRDeviceType::Tracker)
+    else CHECK_POSE(name, "pose_leftfoot", EVRDeviceType::Tracker)
+    else CHECK_POSE(name, "pose_rightfoot", EVRDeviceType::Tracker)
+}
+
+#undef CHECK_POSE
 
 
 // soda can time
@@ -34,9 +58,10 @@ void VRDeviceType::Init( const char* m_path )
 
 const char* VRDeviceType::GetTrackerModelName( EVRTracker tracker )
 {
-    if ( m_trackerModels.Find( GetTrackerName((short)tracker) ) )
+    unsigned short index = m_trackerModels.Find( tracker );
+    if ( index )
     {
-        return m_trackerModels.Element( (short)tracker - 1 );
+        return m_trackerModels.Element( index );
     }
 
     // no model assigned, so you get a soda can instead
@@ -132,8 +157,9 @@ void VRSystemShared::CreateDeviceType( const char* path )
     for ( KeyValues* tracker = trackersKey->GetFirstSubKey(); tracker; tracker = tracker->GetNextKey() )
     {
         const char* pose = tracker->GetName();
+        EVRTracker trackerEnum = GetTrackerEnum(pose);
 
-        if ( V_strcmp(pose, "") == 0 || GetTrackerEnum(pose) == EVRTracker::INVALID )
+        if ( V_strcmp(pose, "") == 0 || trackerEnum == EVRTracker::INVALID )
         {
             Warning("[VR] Invalid tracker/pose in device \"%s\" in file \"%s\"\n", deviceType->m_name, path);
             continue;
@@ -141,7 +167,8 @@ void VRSystemShared::CreateDeviceType( const char* path )
 
         const char* model = strdup(tracker->GetString());
 
-        deviceType->m_trackerModels.Element( GetTrackerIndex(pose) ) = model; //( GetTrackerIndex(pose), model );
+        // deviceType->m_trackerModels.Element( GetTrackerIndex(pose) ) = model; //( GetTrackerIndex(pose), model );
+        deviceType->m_trackerModels.Insert( trackerEnum, model );
     }
 
     m_deviceTypes.AddToTail( deviceType );

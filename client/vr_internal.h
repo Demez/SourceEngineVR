@@ -20,6 +20,8 @@
 #include "shaderapi/ishadershadow.h"
 #include "../materialsystem/IHardwareConfigInternal.h"
 
+#include "vr_dxvk.h"
+
 #define MAX_STR_LEN 4096
 #define MAX_ACTIONS 64
 #define MAX_ACTIONSETS 16
@@ -45,6 +47,20 @@ enum class VREye;
 extern IShaderAPI *g_pShaderAPI;
 
 
+// for dxvk interacting with the client's vr system
+class VRInterface: public IVRInterface
+{
+public:
+    virtual void WaitGetPoses();
+    virtual void UpdatePoses();
+    virtual void HandleSubmitError( vr::EVRCompositorError error );
+    virtual vr::VRTextureBounds_t GetTextureBounds( vr::EVREye eye );
+    virtual vr::IVRCompositor* GetCompositor();
+};
+
+extern VRInterface *g_pVRInterface;
+
+
 // these are separate from the VRSystem class because these are only used internally in this file
 class VRSystemInternal
 {
@@ -60,7 +76,6 @@ public:
     void        ResetActiveActionSets();
     void        Submit( bool isDX11, void* submitData, vr::EVREye eye );
     void        CalcTextureBounds( float &aspect, float &fov );
-
 
     // -------------------------------------------------------------------------------------
 

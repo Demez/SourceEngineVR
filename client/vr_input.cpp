@@ -18,7 +18,7 @@
 #include "tier0/memdbgon.h"
 
 
-ConVar vr_allow_mouse("vr_allow_mouse", "0", FCVAR_CLIENTDLL);
+ConVar vr_mouse_look("vr_mouse_look", "0", FCVAR_CLIENTDLL);
 ConVar vr_allow_keyboard("vr_allow_keyboard", "1", FCVAR_CLIENTDLL);
 ConVar vr_disable_joy("vr_disable_joy", "0", FCVAR_CLIENTDLL);
 // ConVar vr_move_mode("vr_move_mode", "0", FCVAR_CLIENTDLL, "0 for normal/non-vr, 1 - Headset for movement direction, 2 or 3 for L/R controller move direction");
@@ -26,7 +26,7 @@ ConVar vr_disable_joy("vr_disable_joy", "0", FCVAR_CLIENTDLL);
 ConVar vr_forward_speed("vr_forward_speed", "450", FCVAR_CLIENTDLL);
 ConVar vr_side_speed("vr_side_speed", "450", FCVAR_CLIENTDLL);
 ConVar vr_back_speed("vr_back_speed", "450", FCVAR_CLIENTDLL);
-ConVar vr_turn_speed("vr_turn_speed", "1.5", FCVAR_CLIENTDLL);
+ConVar vr_turn_speed("vr_turn_speed", "150", FCVAR_ARCHIVE);
 // ConVar vr_turn_snap("vr_turn_snap", "0", FCVAR_CLIENTDLL);
 
 /*
@@ -272,6 +272,15 @@ void CVRInput::JoyStickInput( float frametime, CUserCmd *cmd )
 	{
 		KeyUp( &in_joyspeed, NULL );
 	}
+
+	if ( cmd->forwardmove > 0 )
+	{
+		cmd->buttons |= IN_FORWARD;
+	}
+	else if ( cmd->forwardmove < 0 )
+	{
+		cmd->buttons |= IN_BACK;
+	}
 }
 
 extern short GetTrackerIndex(const char* name);
@@ -338,32 +347,16 @@ void CVRInput::VRMove( float frametime, CUserCmd *cmd )
 	JoyStickInput( frametime, cmd );
 
 	C_VRBasePlayer *pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
-	VRHostTracker* hmd = g_VR.GetTrackerByName("hmd");
 
 	float viewAngleOffset = 0.0;
 	VRVector2Action* turning = (VRVector2Action*)g_VR.GetActionByName( "vector2_smoothturn" );
 	if ( turning != NULL )
 	{
-		viewAngleOffset = -turning->x * vr_turn_speed.GetFloat();
-		pPlayer->AddViewRotateOffset( viewAngleOffset );
+		viewAngleOffset = frametime * -turning->x * vr_turn_speed.GetFloat();
+		pPlayer->AddLocalViewRotation( viewAngleOffset );
 	}
 
-	if ( hmd != NULL )
-	{
-		// QuakeVR copy paste funny
-		// also has some stuff for eye position and the rotation, hmm
-		Vector moveInTracking = hmd->pos - lastHeadOrigin;
-
-		lastHeadOrigin = hmd->pos;
-
-		Vector finalPos;
-		VectorYawRotate(moveInTracking, pPlayer->viewOffset, finalPos);
-		finalPos.z = 0;
-
-		cmd->vr_originOffset = finalPos;
-	}
-
-	cmd->vr_viewRotation = pPlayer->viewOffset;
+	cmd->vr_viewRotation = pPlayer->m_vrViewRotationLocal;
 
 	for (int i = 0; i < g_VR.m_currentTrackers.Count(); i++ )
 	{
@@ -434,7 +427,7 @@ int CVRInput::GetButtonBits( bool bResetState )
 
 void CVRInput::VRHeadsetAngles( float frametime )
 {
-	if ( !g_VR.active )
+	if ( !g_VR.active && !vr_mouse_look.GetBool() )
 		return;
 
 	C_VRBasePlayer *pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();

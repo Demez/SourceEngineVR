@@ -70,7 +70,7 @@ public:
 	Vector ViewOrigin();
 	QAngle ViewAngles();
 
-	bool ShouldDrawTrackers();
+	bool ShouldDrawTracker( EVRTracker tracker );
 	CVRTrackerRender* GetTrackerRender( VRHostTracker* tracker );
 
 	ITexture *leftEye;

@@ -14,6 +14,7 @@ extern ConVar vr_cl_headheight;
 
 VRIKSystem::VRIKSystem()
 {
+	m_enabled = false;
 }
 
 
@@ -31,6 +32,8 @@ void VRIKSystem::Init()
 		Warning("[VRIK] Failed to initialize IK logging");
 
 	ik.log.set_severity(IK_WARNING);
+
+	m_enabled = true;
 }
 
 
@@ -38,6 +41,8 @@ void VRIKSystem::DeInit()
 {
 	ik.deinit();
 	ik.log.deinit();
+
+	m_enabled = false;
 }
 
 
@@ -316,7 +321,7 @@ bool VRIKSystem::UpdateArm( C_VRBasePlayer* pPlayer, CVRTracker* pTracker, CVRBo
 
 	if ( ikInfo == nullptr )
 	{
-		Warning( "[VRIK] No IK setup for %s Arm!", pTracker->IsLeftHand() ? "Left" : "Right" );
+		Warning( "[VRIK] No IK setup for %s Arm!\n", pTracker->IsLeftHand() ? "Left" : "Right" );
 		return false;
 	}
 

@@ -18,10 +18,16 @@
 #include "rendertexture.h"
 #include "materialsystem/itexture.h"
 #include "inputsystem/iinputsystem.h"
+#include "inputsystem/iinputstacksystem.h"
 #include "tier0/ICommandLine.h"
+#include "tier1/fmtstr.h"
 
 #include "view.h"
 #include "viewrender.h"
+
+#if DXVK_VR
+#include "vr_dxvk.h"
+#endif
 
 #include <openvr.h>
 #include <mathlib/vector.h>
@@ -35,13 +41,14 @@
 ConVar vr_autostart("vr_autostart", "0", FCVAR_ARCHIVE, "auto start vr on level load");
 ConVar vr_mainmenu("vr_mainmenu", "1", FCVAR_ARCHIVE);
 ConVar vr_renderthread("vr_renderthread", "0", FCVAR_ARCHIVE, "use a separate thread for rendering in vr on the main menu or while loading a level");
-ConVar vr_active_hack("vr_active_hack", "0", FCVAR_CLIENTDLL, "lazy hack for anything that needs to know if vr is enabled outside of the game dlls (mouse lock)");
 
-ConVar vr_clamp_res("vr_clamp_res", "1", FCVAR_CLIENTDLL, "clamp the resolution to the screen size until the render clamping issue is figured out");
+ConVar vr_clamp_res("vr_clamp_res", "0", FCVAR_CLIENTDLL, "clamp the resolution to the screen size until the render clamping issue is figured out");
 ConVar vr_scale_override("vr_scale_override", "42.5");  // anything lower than 0.25 doesn't look right in the headset
 ConVar vr_dbg_rt_res("vr_dbg_rt_res", "2048", FCVAR_CLIENTDLL);
 ConVar vr_eye_height("vr_eye_h", "0", FCVAR_CLIENTDLL, "Override the render target height, 0 to disable");
 ConVar vr_eye_width("vr_eye_w", "0", FCVAR_CLIENTDLL, "Override the render target width, 0 to disable");
+
+ConVar vr_haptic("vr_haptic", "1", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Enable/Disable Haptic Feedback/Vibrations");
 
 ConVar vr_waitgetposes_test("vr_waitgetposes_test", "0", FCVAR_CLIENTDLL, "testing where WaitGetPoses is called");
 
@@ -59,6 +66,13 @@ extern VRSystemInternal     g_VRInt;
 vr::IVRSystem*              g_pOVR = NULL;
 vr::IVRInput*               g_pOVRInput = NULL;
 
+#if DXVK_VR
+IDXVK_VRSystem*             g_pDXVK = NULL;
+#endif
+
+static InputContextHandle_t g_vrInputContext = INPUT_CONTEXT_HANDLE_INVALID;
+
+// 10.0f/0.254f;
 const double DEFAULT_VR_SCALE = 39.37012415030996;
 
 bool g_VRSupported;
@@ -116,19 +130,6 @@ void ListActions()
 }
 
 
-/*CON_COMMAND( vr_list_trackers, "Lists all trackers" )
-{
-    Msg("[VR] ");
-    ListTrackers();
-}
-
-CON_COMMAND( vr_list_actions, "Lists all actions" )
-{
-    Msg("[VR] ");
-    ListActions();
-}*/
-
-
 ConCommand vr_list_trackers("vr_list_trackers", ListTrackers, "Lists all trackers");
 ConCommand vr_list_actions("vr_list_actions", ListActions, "Lists all actions");
 
@@ -143,10 +144,27 @@ CON_COMMAND(vr_info, "Lists all information")
 
 	Msg( "SteamVR Runtime Version: %s\n", g_pOVR->GetRuntimeVersion() );
 
-    Msg( "Headset Tracking System: %s\n", g_VR.GetHeadsetTrackingSystemName() );
-    Msg( "Headset Model Number: %s\n", g_VR.GetHeadsetModelNumber() );
-    Msg( "Headset Serial Number: %s\n", g_VR.GetHeadsetSerialNumber() );
-    Msg( "Headset Type: %s\n", g_VR.GetHeadsetType() );
+    for ( int i = 0; i < g_VR.m_currentTrackers.Count(); i++ )
+    {
+        VRHostTracker* tracker = g_VR.m_currentTrackers[i];
+
+        Msg( "Tracker/Pose \"%s\" Info:\n", tracker->name );
+
+        char propName[256];
+        g_VR.GetTrackingPropString( propName, 256, vr::Prop_ControllerType_String, tracker->deviceIndex );
+        Msg(" - Prop_ControllerType  = %s\n", propName);
+
+        g_VR.GetTrackingPropString( propName, 256, vr::Prop_TrackingSystemName_String, tracker->deviceIndex );
+        Msg(" - Prop_TrackingSystemName = %s\n", propName);
+
+        g_VR.GetTrackingPropString( propName, 256, vr::Prop_RenderModelName_String, tracker->deviceIndex );
+        Msg(" - Prop_RenderModelName = %s\n", propName);
+
+        if ( tracker->type == EVRTracker::HMD )
+        {
+            Msg(" - Prop_DisplayFrequency = %f\n", g_pOVR->GetFloatTrackedDeviceProperty( tracker->deviceIndex, vr::Prop_DisplayFrequency_Float, NULL ));
+        }
+    }
 
 	ListTrackers();
 	ListActions();
@@ -155,7 +173,7 @@ CON_COMMAND(vr_info, "Lists all information")
 
 vr::EVREye ToOVREye( VREye eye )
 {
-	return (eye == VREye::Left) ? vr::EVREye::Eye_Left : vr::EVREye::Eye_Right;
+	return (vr::EVREye)eye;
 }
 
 
@@ -178,18 +196,26 @@ VRHostTracker::~VRHostTracker()
 }
 
 
-// DEMEZ: TEMPORARY PLEASE CHANGE
-ConVar vr_devicehack("vr_devicehack", "0", FCVAR_ARCHIVE, "0 - oculus_cv1, 1 - valve_index");
+const char* GetTrackerModelName( uint32_t deviceIndex )
+{
+    char modelName[MAX_PATH];
+    g_VR.GetTrackingPropString( modelName, 256, vr::Prop_RenderModelName_String, deviceIndex );
+
+    // ex: "models/vr/oculus_cv1_controller_left.mdl"
+    char modelPath[MAX_PATH];
+    V_snprintf(modelPath, MAX_PATH, "models/vr/%s.mdl", modelName);
+
+    return strdup(modelPath);
+}
 
 const char* VRHostTracker::GetModelName()
 {
-    if ( !device )
+    return GetTrackerModelName( deviceIndex );
+
+    // obsolete code path? could only be useful for networking it
+    /*if ( !device )
     {
-        // DEMEZ: TEMPORARY PLEASE CHANGE
-        // i just need to figure out how to get the device type from openvr, and then i can do this properly
-        // i could probably set this up in usercmd now, and move the hack there
-        // just adding a hack convar in for now for a portal vr demo
-        device = g_VRShared.GetDeviceType( vr_devicehack.GetInt() == 1 ? "valve_index" : "oculus_cv1" );
+        device = g_VRShared.GetDeviceType( "oculus_cv1" );
     }
 
     if ( device == nullptr )
@@ -198,56 +224,26 @@ const char* VRHostTracker::GetModelName()
         return "";
     }
 
-    return device->GetTrackerModelName(type);
+    return device->GetTrackerModelName(type);*/
 }
 
 
 // -----------------------------------------------------------------------------
 
 
-/*
-public float hmd_SecondsFromVsyncToPhotons { get { return GetFloatProperty(ETrackedDeviceProperty.Prop_SecondsFromVsyncToPhotons_Float); } }
-public float hmd_DisplayFrequency { get { return GetFloatProperty(ETrackedDeviceProperty.Prop_DisplayFrequency_Float); } }
-*/
-
-// this actually works just fine so
-#pragma warning( push )
-#pragma warning( disable : 4172 )
-
-const char* VRSystem::GetTrackingPropString( vr::ETrackedDeviceProperty prop, uint deviceId )
+void VRSystem::GetTrackingPropString( char* value, int size, vr::ETrackedDeviceProperty prop, uint deviceId )
 {
     vr::ETrackedPropertyError error = vr::TrackedProp_Success;
     uint32_t capacity = g_pOVR->GetStringTrackedDeviceProperty( deviceId, prop, NULL, 0, &error );
 
     if ( capacity > 1 )
     {
-        char value[256];
-        g_pOVR->GetStringTrackedDeviceProperty( vr::k_unTrackedDeviceIndex_Hmd, prop, value, 256, &error );
-        return value;
+        g_pOVR->GetStringTrackedDeviceProperty( deviceId, prop, value, size, &error );
     }
-
-    char value[256];
-    V_snprintf( value, 256, "[ERROR - %s]", g_pOVR->GetPropErrorNameFromEnum( error ) );
-    return value;
-}
-
-#pragma warning( pop )
-
-const char* VRSystem::GetHeadsetTrackingSystemName()
-{
-    return GetTrackingPropString( vr::Prop_TrackingSystemName_String );
-}
-const char* VRSystem::GetHeadsetModelNumber()
-{
-    return GetTrackingPropString( vr::Prop_ModelNumber_String );
-}
-const char* VRSystem::GetHeadsetSerialNumber()
-{
-    return GetTrackingPropString( vr::Prop_SerialNumber_String );
-}
-const char* VRSystem::GetHeadsetType()
-{
-    return GetTrackingPropString( vr::Prop_ControllerType_String );
+    else
+    {
+        V_snprintf( value, size, "[ERROR - %s]", g_pOVR->GetPropErrorNameFromEnum( error ) );
+    }
 }
 
 
@@ -267,19 +263,7 @@ bool VRSystem::GetEyeProjectionMatrix( VMatrix *pResult, VREye eEye, float zNear
 
 VMatrix VRSystem::OVRToSrcCoords( const VMatrix& vortex, bool scale )
 {
-    // const float inchesPerMeter = (float)(39.3700787);
-
-    // 10.0f/0.254f;
-    // 39.37012415030996
-    // float inchesPerMeter = (float)(39.3700787);
-    // double inchesPerMeter = (double)(39.37012415030996);
-    double inchesPerMeter = m_scale;
-
-    if ( vr_scale_override.GetFloat() > 0 )
-        inchesPerMeter = vr_scale_override.GetFloat();
-
-    if ( scale )
-        inchesPerMeter *= vr_scale.GetFloat();
+    double inchesPerMeter = GetScale();
 
     // From Vortex: X=right, Y=up, Z=backwards, scale is meters.
     // To Source: X=forwards, Y=left, Z=up, scale is inches.
@@ -331,6 +315,8 @@ VMatrix VRSystem::GetMidEyeFromEye( VREye eEye )
 
 VRSystem::VRSystem(): CAutoGameSystemPerFrame("vr_system")
 {
+    SetDefLessFunc( m_deviceClasses );
+
     m_inMap = false;
 }
 
@@ -340,8 +326,20 @@ VRSystem::~VRSystem()
 }
 
 
+#if DXVK_VR
+extern IDXVK_VRSystem* GetDXVK_VRSystem();
+#endif
+
+
 bool VRSystem::Init()
 {
+#if DXVK_VR
+
+    g_pDXVK = GetDXVK_VRSystem();
+    g_VRSupported = (g_pDXVK != NULL);
+
+#else
+
 #if ENGINE_ASW
     if ( CommandLine()->FindParm("-vrapi") )
     {
@@ -365,7 +363,12 @@ bool VRSystem::Init()
     g_VRSupported = true;
 #endif
 
+#endif
+
     g_VRRenderer.Init();
+
+    g_vrInputContext = g_pInputStackSystem->PushInputContext();
+    g_pInputStackSystem->EnableInputContext( g_vrInputContext, false );
 
     if ( vr_autostart.GetBool() && vr_mainmenu.GetBool() )
         Enable();
@@ -413,25 +416,27 @@ void VRSystem::Update( float frametime )
     }
 
     // DEMEZ TODO: should probably be moved to viewrender?
-    if ( !vr_waitgetposes_test.GetBool() )
+    if ( vr_waitgetposes_test.GetInt() == 0 )
         WaitGetPoses();
 
     if ( m_scale <= 0.0f )
         m_scale = DEFAULT_VR_SCALE;
-
-    // hmmmm
-    if ( !vr_active_hack.GetBool() )
-        vr_active_hack.SetValue("1");
 
     if ( !m_inMap )
         g_VRRenderer.Render();
 }
 
 
+// might be a good idea to rename this function, probably OpenVRUpdate, idk
 void VRSystem::WaitGetPoses()
 {
 	UpdateViewParams();
+
+#if !DXVK_VR
     g_VRInt.WaitGetPoses();
+#endif
+
+    UpdateDevices();
 	UpdateTrackers();
 	UpdateActions();
 }
@@ -452,8 +457,8 @@ void VRSystem::LevelInitPostEntity()
 
 void VRSystem::LevelShutdownPostEntity()
 {
-	// what if this is a level transition? shutting down would probably be stupid, right?
-	if ( active )
+    // don't shutdown if this is just a level transition (does this work with server changelevel?)
+	if ( active && !vr_mainmenu.GetBool() && !engine->IsTransitioningToLoad() )
     {
         if ( vr_renderthread.GetBool() )
             StartThread();
@@ -469,11 +474,6 @@ VRHostTracker* VRSystem::GetTracker( EVRTracker tracker )
 {
 	for ( int i = 0; i < m_currentTrackers.Count(); i++ )
 	{
-        /*if ( !m_currentTrackers[i]->valid )
-        {
-            continue;
-        }*/
-
 		if ( m_currentTrackers[i]->type == tracker )
 		{
 			return m_currentTrackers[i];
@@ -484,15 +484,10 @@ VRHostTracker* VRSystem::GetTracker( EVRTracker tracker )
 }
 
 
-struct VRHostTracker* VRSystem::GetTrackerByName( const char* name )
+VRHostTracker* VRSystem::GetTrackerByName( const char* name )
 {
 	for ( int i = 0; i < m_currentTrackers.Count(); i++ )
 	{
-        /*if ( !m_currentTrackers[i]->valid )
-        {
-            continue;
-        }*/
-
 		if ( V_strcmp(m_currentTrackers[i]->name, name) == 0 )
 		{
 			return m_currentTrackers[i];
@@ -502,7 +497,20 @@ struct VRHostTracker* VRSystem::GetTrackerByName( const char* name )
 	return NULL;
 }
 
-struct VRBaseAction* VRSystem::GetActionByName( const char* name )
+VRBaseAction* VRSystem::GetActionByHandle( vr::VRActionHandle_t handle )
+{
+	for ( int i = 0; i < m_currentActions.Count(); i++ )
+	{
+		if ( m_currentActions[i]->handle == handle )
+		{
+			return m_currentActions[i];
+		}
+	}
+
+	return NULL;
+}
+
+VRBaseAction* VRSystem::GetActionByName( const char* name )
 {
 	for ( int i = 0; i < m_currentActions.Count(); i++ )
 	{
@@ -516,22 +524,161 @@ struct VRBaseAction* VRSystem::GetActionByName( const char* name )
 }
 
 
+void VRSystem::TriggerHapticFeedback( EVRTracker tracker, float amplitude, float duration, float freq, float delay )
+{
+    if ( !vr_haptic.GetBool() )
+        return;
+
+    VRHostTracker* hostTracker = GetTracker( tracker );
+    if ( hostTracker == NULL )
+        return;
+
+    // NOTE: you can technically do haptic feedback with vive trackers with some output pins or something
+    const char* actionName;
+    if ( tracker == EVRTracker::LHAND )
+    {
+        actionName = "vibration_left";
+    }
+    else if ( tracker == EVRTracker::RHAND )
+    {
+        actionName = "vibration_right";
+    }
+    else
+    {
+        Msg( "[VR] Invalid device for Haptic Feedback - \"%s\"\n", hostTracker->name );
+    }
+
+    vr::EVRInputError ret = vr::VRInputError_None;
+
+    for (int i = 0; i < g_VRInt.actionCount; i++)
+    {
+        if (V_strcmp(g_VRInt.actions[i].name, actionName) == 0)
+        {
+            ret = g_pOVRInput->TriggerHapticVibrationAction(g_VRInt.actions[i].handle, delay, duration, freq, amplitude, vr::k_ulInvalidInputValueHandle);
+            break;
+        }
+    }
+
+    if (ret != vr::EVRInputError::VRInputError_None)
+    {
+        Msg( "[VR] Haptic Feedback failed! Error code %d\n", ret );
+    }
+}
+
+
+// slightly overkill lol, could be moved to vr_util maybe, idk
+static float GetArgFloat( const CCommand& args, int i, float _default )
+{
+    if ( args.ArgC() <= i )
+        return _default;
+
+    char* end;
+    double result = 0;
+
+    result = strtod(args.Arg(i), &end);
+
+    if ( end == args.Arg(i) )
+    {
+        Msg("Error: Arg %d - \"%s\" is not a valid float, defaulting to %.2f\n", i, args.Arg(i), _default);
+        return _default;
+    }
+
+    return result;
+}
+
+
+CON_COMMAND(vr_test_haptics, "Test Haptics")
+{
+    if ( args.ArgC() <= 1 )
+    {
+        Msg("Pick a controller with L or R, or B for both\n");
+        Msg("The next optional args are Amplitude, Duration, Frequency, and Delay, all floats\n");
+        return;
+    }
+
+    const char* controllerChar = args.Arg(1);
+
+    int controller = -1;
+    if ( V_strcmp(controllerChar, "L") == 0 )
+    {
+        controller = 0;
+    }
+    else if ( V_strcmp(controllerChar, "R") == 0 )
+    {
+        controller = 1;
+    }
+    else if ( V_strcmp(controllerChar, "B") == 0 )
+    {
+        controller = 2;
+    }
+    else
+    {
+        Msg("Invalid controller specified: \"\"\n", controllerChar);
+        return;
+    }
+
+    float amplitude = GetArgFloat(args, 4, 1.0f);
+    float duration = GetArgFloat(args, 2, 1.0f);
+    float freq = GetArgFloat(args, 3, 1.0f);
+    float delay = GetArgFloat(args, 5, 0.0f);
+
+    if (controller == 0 || controller == 2)
+    {
+        g_VR.TriggerHapticFeedback( EVRTracker::LHAND, amplitude, duration, freq, delay );
+    }
+    if (controller == 1 || controller == 2)
+    {
+        g_VR.TriggerHapticFeedback( EVRTracker::RHAND, amplitude, duration, freq, delay );
+    }
+}
+
+
+// useless?
+void VRSystem::UpdateDevices()
+{
+    /** Returns the device class of a tracked device. If there has not been a device connected in this slot
+    * since the application started this function will return TrackedDevice_Invalid. For previous detected
+    * devices the function will return the previously observed device class. 
+    *
+    * To determine which devices exist on the system, just loop from 0 to k_unMaxTrackedDeviceCount and check
+    * the device class. Every device with something other than TrackedDevice_Invalid is associated with an 
+    * actual tracked device. */
+    // ETrackedDeviceClass GetTrackedDeviceClass( vr::TrackedDeviceIndex_t unDeviceIndex ) = 0;
+
+    m_deviceClasses.Purge();
+
+    for (uint i = 0; i < vr::k_unMaxTrackedDeviceCount; i++)
+    {
+        vr::ETrackedDeviceClass trackedDevice = g_pOVR->GetTrackedDeviceClass(i);
+
+        if ( trackedDevice != vr::TrackedDeviceClass_Invalid )
+        {
+            m_deviceClasses.Insert( i, trackedDevice );
+        }
+    }
+
+    /** Get a sorted array of device indices of a given class of tracked devices (e.g. controllers).  Devices are sorted right to left
+    * relative to the specified tracked device (default: hmd -- pass in -1 for absolute tracking space).  Returns the number of devices
+    * in the list, or the size of the array needed if not large enough. */
+    // uint32_t GetSortedTrackedDeviceIndicesOfClass( ETrackedDeviceClass eTrackedDeviceClass, VR_ARRAY_COUNT(unTrackedDeviceIndexArrayCount) vr::TrackedDeviceIndex_t *punTrackedDeviceIndexArray, uint32_t unTrackedDeviceIndexArrayCount, vr::TrackedDeviceIndex_t unRelativeToTrackedDeviceIndex = k_unTrackedDeviceIndex_Hmd ) = 0;
+
+    /*uint32_t ret;
+    vr::TrackedDeviceIndex_t trackedControllers[4];
+    vr::TrackedDeviceIndex_t baseStationIndices[4];
+
+    ret = g_pOVR->GetSortedTrackedDeviceIndicesOfClass( vr::TrackedDeviceClass_Controller, trackedControllers, 4 );
+    ret = g_pOVR->GetSortedTrackedDeviceIndicesOfClass( vr::TrackedDeviceClass_TrackingReference, baseStationIndices, 4 );
+
+    Msg("funny\n");*/
+}
+
+
 extern EVRTracker GetTrackerEnum( const char* name );
 
 
 void VRSystem::UpdateTrackers()
 {
-	// m_currentTrackers.PurgeAndDeleteElements();
-
     CUtlVector< VRHostTracker* > tmpTrackers;
-
-    /*for ( int i = 0; i < m_currentTrackers.Count(); i++ )
-    {
-        // m_currentTrackers[i]->valid = false;
-        tmpTrackers[i] = m_currentTrackers[i];
-    }*/
-
-    // m_currentTrackers.Purge();
 
     vr::InputPoseActionData_t poseActionData;
     vr::TrackedDevicePose_t pose;
@@ -566,12 +713,45 @@ void VRSystem::UpdateTrackers()
             struct VRHostTracker* tracker = GetTrackerByName( poseName );
             if ( tracker == NULL )
             {
-                // tracker = (struct VRHostTracker*) malloc(sizeof(struct VRHostTracker));
                 tracker = new VRHostTracker;
                 tracker->name = strdup(poseName);
                 tracker->type = GetTrackerEnum( poseName );
-                // tracker->device = GetDeviceType( tracker->type );
-                // m_allTrackers.AddToTail( tracker );
+                tracker->actionIndex = i;
+
+                vr::TrackedDeviceIndex_t deviceIndex = vr::k_unTrackedDeviceIndexInvalid;
+
+                // only ones with a deviceIndex right now, blech
+                if ( tracker->type == EVRTracker::HMD )
+                {
+                    deviceIndex = 0;
+                }
+                else if ( tracker->type == EVRTracker::LHAND )
+                {
+                    // yeah yeah depriciated, whatever, idk what else to use for this
+                    deviceIndex = g_pOVR->GetTrackedDeviceIndexForControllerRole( vr::TrackedControllerRole_LeftHand );
+                }
+                else if ( tracker->type == EVRTracker::RHAND )
+                {
+                    deviceIndex = g_pOVR->GetTrackedDeviceIndexForControllerRole( vr::TrackedControllerRole_RightHand );
+                }
+
+                tracker->deviceIndex = deviceIndex;
+
+                Msg("[VR] Tracker connected: %s\n", tracker->name);
+
+                // if ( tracker->type == EVRTracker::HMD || tracker->type == EVRTracker::LHAND || tracker->type == EVRTracker::RHAND )
+                if ( deviceIndex != vr::k_unTrackedDeviceIndexInvalid )
+                {
+                    char propName[256];
+                    GetTrackingPropString( propName, 256, vr::Prop_ControllerType_String, deviceIndex );
+                    DevMsg(" - Prop_ControllerType  = %s\n", propName);
+
+                    // GetTrackingPropString( propName, 256, vr::Prop_TrackingSystemName_String, deviceIndex );
+                    // DevMsg(" - Prop_TrackingSystemName = %s\n", propName);
+
+                    GetTrackingPropString( propName, 256, vr::Prop_RenderModelName_String, deviceIndex );
+                    DevMsg(" - Prop_RenderModelName = %s\n", propName);
+                }
             }
 
             tracker->mat = OVRToSrcCoords( VMatrixFrom34( mat.m ) );
@@ -587,7 +767,6 @@ void VRSystem::UpdateTrackers()
             tracker->angvel.y = -pose.vAngularVelocity.v[0] * (180.0 / 3.141592654);
             tracker->angvel.z = pose.vAngularVelocity.v[1] * (180.0 / 3.141592654);
 
-            // tracker->valid = true;
             tmpTrackers.AddToTail( tracker );
         }
     }
@@ -608,28 +787,23 @@ void VRSystem::UpdateTrackers()
         // deleted tracker, free it
         if ( !foundMatch )
         {
-            // free(m_currentTrackers[i]);
+            Msg("[VR] Tracker disconnected: %s\n", m_currentTrackers[i]->name);
             delete m_currentTrackers[i];
         }
     }
 
     m_currentTrackers.Purge();
     m_currentTrackers.CopyArray( tmpTrackers.Base(), tmpTrackers.Count() );
-
-    // m_allTrackers.Purge();
-    // m_allTrackers.CopyArray( tmpTrackers.Base(), tmpTrackers.Count() );
-
-    /*for ( int i = 0; i < m_currentTrackers.Count(); i++ )
-    {
-        // m_currentTrackers[i]->valid = false;
-        tmpTrackers[i] = m_currentTrackers[i];
-    }*/
 }
 
 
+#define VR_NEW_ACTION(type, name) \
+    type* name = (currentAction == NULL) ?  new type : (type*)currentAction
+
 void VRSystem::UpdateActions()
 {
-	m_currentActions.PurgeAndDeleteElements();
+    CUtlVector< VRBaseAction* > tmpActions;
+	// m_currentActions.PurgeAndDeleteElements();
 
     vr::InputDigitalActionData_t digitalActionData;
     vr::InputAnalogActionData_t analogActionData;
@@ -639,8 +813,13 @@ void VRSystem::UpdateActions()
 
     for (int i = 0; i < g_VRInt.actionCount; i++)
     {
-        VRBaseAction* currentAction = NULL; 
+        // VRBaseAction* currentAction = NULL; 
         savedAction action = g_VRInt.actions[i];
+
+        VRBaseAction* currentAction = GetActionByName( action.name );
+
+        // doesn't work apparently
+        // VRBaseAction* currentAction = GetActionByHandle( action.handle );
 
         // this is probably pretty slow and stupid
         // allocating memory and freeing it every frame
@@ -649,7 +828,7 @@ void VRSystem::UpdateActions()
         {
             bool value = (g_pOVRInput->GetDigitalActionData(action.handle, &digitalActionData, sizeof(digitalActionData), vr::k_ulInvalidInputValueHandle) == vr::VRInputError_None && digitalActionData.bState);
 
-            VRBoolAction* tempAction = new VRBoolAction;
+            VR_NEW_ACTION(VRBoolAction, tempAction);
             tempAction->value = value;
 
             currentAction = tempAction;
@@ -658,7 +837,7 @@ void VRSystem::UpdateActions()
         {
             g_pOVRInput->GetAnalogActionData(action.handle, &analogActionData, sizeof(analogActionData), vr::k_ulInvalidInputValueHandle);
 
-            VRVector1Action* tempAction = new VRVector1Action;
+            VR_NEW_ACTION(VRVector1Action, tempAction);
             tempAction->value = analogActionData.x;
 
             currentAction = tempAction;
@@ -666,7 +845,8 @@ void VRSystem::UpdateActions()
         else if (strcmp(action.type, "vector2") == 0)
         {
             g_pOVRInput->GetAnalogActionData(action.handle, &analogActionData, sizeof(analogActionData), vr::k_ulInvalidInputValueHandle);
-            VRVector2Action* tempAction = new VRVector2Action;
+
+            VR_NEW_ACTION(VRVector2Action, tempAction);
             tempAction->x = analogActionData.x;
             tempAction->y = analogActionData.y;
 
@@ -674,8 +854,7 @@ void VRSystem::UpdateActions()
         }
         else if (strcmp(action.type, "skeleton") == 0)
         {
-            // VRSkeletonAction* tempAction = (struct VRSkeletonAction*) malloc(sizeof(struct VRSkeletonAction));
-            VRSkeletonAction* tempAction = new VRSkeletonAction;
+            VR_NEW_ACTION(VRSkeletonAction, tempAction);
 
             g_pOVRInput->GetSkeletalSummaryData(action.handle, vr::VRSummaryType_FromAnimation, &skeletalSummaryData);
 
@@ -690,11 +869,42 @@ void VRSystem::UpdateActions()
 
         if ( currentAction != NULL )
         {
-            currentAction->name = strdup(action.name);
-            m_currentActions.AddToTail( &(*currentAction) );
+            if ( currentAction->handle == 0 )
+            {
+                currentAction->name = strdup(action.name);
+                currentAction->handle = action.handle;
+            }
+
+            tmpActions.AddToTail( &(*currentAction) );
         }
     }
+
+    // is this even needed for actions?
+    for ( int i = 0; i < m_currentActions.Count(); i++ )
+    {
+        bool foundMatch = false;
+        for ( int j = 0; j < tmpActions.Count(); j++ )
+        {
+            if ( V_strcmp( m_currentActions[i]->name, tmpActions[j]->name ) != 0 )
+            {
+                foundMatch = true;
+                break;
+            }
+        }
+
+        // deleted action, free it
+        if ( !foundMatch )
+        {
+            Msg("[VR] deleting an action??? wtf?????\n");
+            delete m_currentActions[i];
+        }
+    }
+
+    m_currentActions.Purge();
+    m_currentActions.CopyArray( tmpActions.Base(), tmpActions.Count() );
 }
+
+#undef VR_NEW_ACTION
 
 
 void VRSystem::GetFOVOffset( VREye eye, float &aspectRatio, float &hFov )
@@ -737,10 +947,10 @@ void VRSystem::UpdateViewParams()
     }
 
     // not needed anymore
-    /*if ( vr_clamp_res.GetBool() )
+    if ( vr_clamp_res.GetBool() )
     {
         int scrWidth, scrHeight;
-        vgui::surface()->GetScreenSize( scrWidth, scrHeight );
+        materials->GetBackBufferDimensions( scrWidth, scrHeight );
 
         if ( scrWidth < width || scrHeight < height )
         {
@@ -753,19 +963,16 @@ void VRSystem::UpdateViewParams()
 
             if ( width % 2 != 0 )
             {
-                width += 1;
+                width -= 1;
             }
         }
-    }*/
+    }
 
     if ( vr_eye_height.GetFloat() > 0 )
         viewParams.height = vr_eye_height.GetFloat();
 
     if ( vr_eye_width.GetFloat() > 0 )
         viewParams.width = vr_eye_width.GetFloat();
-
-    if ( vr_eye_width.GetFloat() > 0 || vr_eye_height.GetFloat() > 0 )
-        viewParams.aspect = (float)viewParams.width / (float)viewParams.height;
 
     viewParams.width = width;
     viewParams.height = height;
@@ -777,7 +984,8 @@ void VRSystem::UpdateViewParams()
         GetFOVOffset( VREye::Left, viewParams.aspect, viewParams.fov );
     }
 
-    // viewParams.aspect = (float)viewParams.width / (float)viewParams.height;
+    if ( vr_eye_width.GetFloat() > 0 || vr_eye_height.GetFloat() > 0 )
+        viewParams.aspect = (float)viewParams.width / (float)viewParams.height;
 
 	m_currentViewParams = viewParams;
 }
@@ -797,9 +1005,18 @@ static bool g_wasPostProcessingOn = false;
 
 bool VRSystem::Enable()
 {
+#if DXVK_VR
+    if ( g_VRSupported == NULL )
+    {
+        Warning("[VR] cannot start, DXVK VR interface not found!\n");
+        return false;
+    }
+#endif
+
 	// in case we're retrying after an error and shutdown wasn't called
 	Disable();
 
+#if !DXVK_VR
 #if ENGINE_ASW
     if ( !CommandLine()->FindParm("-vrapi") )
     {
@@ -812,14 +1029,31 @@ bool VRSystem::Enable()
         return false;
     }
 #endif
+#endif
 
 	vr::HmdError error = vr::VRInitError_None;
 
 	g_pOVR = vr::VR_Init(&error, vr::VRApplication_Scene);
 	if (error != vr::VRInitError_None)
 	{
-		// would be nice if i could print out the enum name
-		Warning("[VR] VR_Init failed - Error Code %d\n", error);
+        const char* errorMsg = "";
+
+        // only the errors i've gotten so far
+        switch (error)
+        {
+            case vr::VRInitError_Init_InterfaceNotFound:
+                errorMsg = " - Init_InterfaceNotFound";
+                break;
+
+            case vr::VRInitError_Init_HmdNotFound:
+                errorMsg = " - Init_HmdNotFound";
+                break;
+
+            default:
+                break;
+        }
+
+		Warning("[VR] VR_Init failed - Error Code %d%s\n", error, errorMsg);
 		return false;
 	}
 
@@ -831,33 +1065,25 @@ bool VRSystem::Enable()
 
 	UpdateViewParams();
 
-	g_VRInt.SetActionManifest("vr/vrmod_action_manifest.txt");
+	if ( g_VRInt.SetActionManifest("resource/vr/vrmod_action_manifest.txt") != 0 )
+    {
+        // failed, shutdown vr
+        Disable();
+        return false;
+    }
+
     g_VRInt.ResetActiveActionSets();
     g_VRInt.AddActiveActionSet("/actions/base");
     g_VRInt.AddActiveActionSet("/actions/main");
 
     g_pOVRInput->SetDominantHand( vr_lefthand.GetBool() ? vr::TrackedControllerRole_LeftHand : vr::TrackedControllerRole_RightHand );
 
-    g_VRIK.Init();
+#if DXVK_VR
+    if ( g_pVRInterface == NULL )
+        g_pVRInterface = new VRInterface;
 
-    // g_VRShared.LoadDeviceTypes();
-    // LoadDeviceTypes( "VR" );
-    // LoadDeviceTypes( "MOD" );
-    // LoadDeviceTypes( "GAME" );
-
-    /*if ( m_deviceType == nullptr )
-    {
-        // load unknown device type
-        m_deviceType = GetDeviceType( "unknown" );
-
-        if ( m_deviceType == nullptr )
-        {
-            // technically not mandatory at the moment, so i don't need to really disable it, but this is easier
-            Warning( "[VR] ERROR: no valid device type (not even unknown type!!!)\n" );
-            Disable();
-            return false;
-        }
-    }*/
+    g_pDXVK->Init( g_pVRInterface );
+#endif
 
 	active = true;
     m_scale = DEFAULT_VR_SCALE;
@@ -867,21 +1093,14 @@ bool VRSystem::Enable()
     engine->ClientCmd_Unrestricted("engine_no_focus_sleep 0");
 #endif
 
-	// DEMEZ TODO: not require prediction in singleplayer, this is awful
-    engine->ClientCmd_Unrestricted("cl_localnetworkbackdoor 0");
-    engine->ClientCmd_Unrestricted("cl_predict 1");
-    vr_active_hack.SetValue("1");
-
 #if ENGINE_NEW
     g_wasPostProcessingOn = mat_postprocess_enable.GetBool();
     mat_postprocess_enable.SetValue("0");
 #endif
 
-    /*C_VRBasePlayer* pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
-    if ( pPlayer )
-    {
-        pPlayer->OnVREnabled();
-    }*/
+    // always have the cursor enabled when in vr, so no alt tabbing is needed
+    // maybe hide the cursor after 5 seconds of it being inactive (SetCursorVisible)?
+    g_pInputStackSystem->EnableInputContext( g_vrInputContext, true );
 
     if ( !m_inMap && vr_renderthread.GetBool() )
         StartThread();
@@ -897,6 +1116,10 @@ bool VRSystem::Disable()
         StopThread();
 
 	active = false;
+
+#if DXVK_VR
+    g_pDXVK->Shutdown();
+#endif
 
     if (g_pOVR != NULL)
     {
@@ -924,22 +1147,15 @@ bool VRSystem::Disable()
 #if ENGINE_CSGO
     engine->ClientCmd_Unrestricted("engine_no_focus_sleep 50");
 #endif
-
-    vr_active_hack.SetValue("0");
     
 #if ENGINE_NEW
     mat_postprocess_enable.SetValue( g_wasPostProcessingOn );
 #endif
 
-    m_currentActions.PurgeAndDeleteElements();
-    // m_allTrackers.PurgeAndDeleteElements();
-    m_currentTrackers.Purge();
+    g_pInputStackSystem->EnableInputContext( g_vrInputContext, false );
 
-    /*C_VRBasePlayer* pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
-    if ( pPlayer )
-    {
-        pPlayer->OnVRDisabled();
-    }*/
+    m_currentActions.PurgeAndDeleteElements();
+    m_currentTrackers.Purge();
 
 	return true;
 }
@@ -959,12 +1175,20 @@ bool VRSystem::IsDX11()
 
 bool VRSystem::NeedD3DInit()
 {
+#if DXVK_VR
+    return false;
+#else
+
 #if ENGINE_ASW
     if ( !g_VRSupported )
         return false;
 #endif
 
+    if ( vr_dbg_rt_test.GetBool() )
+        return false;
+
 	return IsDX11() ? false : (g_VRInt.d3d9Device == NULL || g_VRInt.d3d11TextureL == NULL || g_VRInt.d3d11TextureR == NULL);
+#endif
 }
 
 
@@ -983,15 +1207,17 @@ void VRSystem::InitDX9Device( void* deviceData )
 
 void VRSystem::Submit( ITexture* rtEye, VREye eye )
 {
+#if !DXVK_VR
 #if ENGINE_QUIVER || ENGINE_CSGO
 	g_VRInt.Submit( IsDX11(), materials->VR_GetSubmitInfo( rtEye ), ToOVREye( eye ) );
 
 #elif ENGINE_ASW
-    g_VRInt.Submit( IsDX11(), NULL, ToOVREye( eye ) );
+    g_VRInt.Submit( IsDX11(), NULL /*g_pShaderAPI->VR_GetSubmitInfo( rtEye )*/, ToOVREye( eye ) );
 
 #else
 	// TODO: use the hack gmod vr uses
     g_VRInt.Submit( IsDX11(), NULL, ToOVREye( eye ) );
+#endif
 #endif
 }
 
@@ -1009,6 +1235,7 @@ void VRSystem::SetSeatedMode( bool seated )
 }
 
 
+// uh is this even useful right now?
 void VRSystem::SetScale( double newScale )
 {
     m_scale = newScale;
@@ -1016,7 +1243,15 @@ void VRSystem::SetScale( double newScale )
 
 double VRSystem::GetScale()
 {
-    return m_scale;
+    double scale = DEFAULT_VR_SCALE;
+
+    if ( vr_scale_override.GetFloat() > 0 )
+        scale = vr_scale_override.GetFloat();
+
+    if ( scale )
+        scale *= vr_scale.GetFloat();
+
+    return scale;
 }
 
 

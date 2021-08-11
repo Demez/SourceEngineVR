@@ -88,37 +88,31 @@ void WriteUsercmdVR( bf_write *buf, const CUserCmd *to, const CUserCmd *from )
 void WriteUsercmdVR( bf_write *buf, CUserCmd *to, CUserCmd *from )
 #endif
 {
-	// TODO: Can probably get away with fewer bits.
-	WriteUserCmdDeltaShort( buf, "vr_active", from->vr_active, to->vr_active );
+	LogUserCmd( "\t%s %d -> %d\n", "vr_active", from->vr_active, to->vr_active );
+	buf->WriteOneBit( to->vr_active );
 
 	if (!to->vr_active)
 		return;
 
 	WriteUserCmdDeltaFloat( buf, "vr_viewRotation", from->vr_viewRotation, to->vr_viewRotation );
 
-	// could probably use buf->WriteBitVec3Coord( to );
-	WriteUserCmdDeltaFloat( buf, "vr_originOffset[0]", from->vr_originOffset[0], to->vr_originOffset[0] );
-	WriteUserCmdDeltaFloat( buf, "vr_originOffset[1]", from->vr_originOffset[1], to->vr_originOffset[1] );
-	WriteUserCmdDeltaFloat( buf, "vr_originOffset[2]", from->vr_originOffset[2], to->vr_originOffset[2] );
-
 	// handle trackers
+	LogUserCmd( "\t%s %d\n", "vr_trackers", to->vr_trackers.Count() );
+	buf->WriteShort( to->vr_trackers.Count() );
+
+	// rare case, no need to be writing an extra bit all the time
+	// could probably be the same with the tracker pos and ang below
 	if ( to->vr_trackers.Count() == 0 )
 	{
-		buf->WriteOneBit( 0 );
 		return;
 	}
-
-	LogUserCmd( "\t%s %d\n", "vr_trackers", to->vr_trackers.Count() );
-
-	buf->WriteOneBit( 1 );
-	buf->WriteShort( to->vr_trackers.Count() );
 
 	bool leftHand = false;
 	bool rightHand = false;
 
 	for (int i = 0; i < to->vr_trackers.Count(); i++)
 	{
-		bool hasPrevTracker = from->vr_trackers.Count() == i + 1;
+		// bool hasPrevTracker = from->vr_trackers.Count() == i + 1;
 
 		if ( GetTrackerEnum(to->vr_trackers[i].index) == EVRTracker::LHAND ) 
 		{
@@ -130,17 +124,19 @@ void WriteUsercmdVR( bf_write *buf, CUserCmd *to, CUserCmd *from )
 		}
 			
 		// less data to send by sending a single short for the name index instead of the full string
-		// WriteUserCmdDeltaShort( buf, "vr_trackers[i].index", FROM_TRACKER2(from->vr_trackers[i].index), to->vr_trackers[i].index );
-
 		buf->WriteShort( to->vr_trackers[i].index );
 
-		WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[0]", FROM_TRACKER(from->vr_trackers[i].pos[0]), to->vr_trackers[i].pos[0] );
-		WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[1]", FROM_TRACKER(from->vr_trackers[i].pos[1]), to->vr_trackers[i].pos[1] );
-		WriteUserCmdDeltaFloat( buf, "vr_trackers[i].pos[2]", FROM_TRACKER(from->vr_trackers[i].pos[2]), to->vr_trackers[i].pos[2] );
+		// since items in vectors aren't saved, a bit and a float would always be sent for each one
+		// so we can just always write it without those extra bits in that case
 
-		WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[0]", FROM_TRACKER(from->vr_trackers[i].ang[0]), to->vr_trackers[i].ang[0] );
-		WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[1]", FROM_TRACKER(from->vr_trackers[i].ang[1]), to->vr_trackers[i].ang[1] );
-		WriteUserCmdDeltaFloat( buf, "vr_trackers[i].ang[2]", FROM_TRACKER(from->vr_trackers[i].ang[2]), to->vr_trackers[i].ang[2] );
+		// would WriteBitFloat, WriteBitVec3Coord or even WriteBitCoordMP be more efficent here?
+		buf->WriteFloat( to->vr_trackers[i].pos[0] );
+		buf->WriteFloat( to->vr_trackers[i].pos[1] );
+		buf->WriteFloat( to->vr_trackers[i].pos[2] );
+
+		buf->WriteFloat( to->vr_trackers[i].ang[0] );
+		buf->WriteFloat( to->vr_trackers[i].ang[1] );
+		buf->WriteFloat( to->vr_trackers[i].ang[2] );
 
 		// this probably can be calculated so we can send less data, but this is the lazy way since it gives the velocity already
 		// WriteUserCmdDeltaFloat( buf, "vr_trackers[i].vel[0]", FROM_TRACKER(from->vr_trackers[i].vel[0]), to->vr_trackers[i].vel[0] );
@@ -187,8 +183,7 @@ extern const char* GetTrackerName( short index );
 //-----------------------------------------------------------------------------
 void ReadUsercmdVR( bf_read *buf, CUserCmd *move, CUserCmd *from )
 {
-	if ( buf->ReadOneBit() )
-		move->vr_active = buf->ReadShort();
+	move->vr_active = buf->ReadOneBit();
 
 	if (!move->vr_active)
 		return;
@@ -196,77 +191,82 @@ void ReadUsercmdVR( bf_read *buf, CUserCmd *move, CUserCmd *from )
 	if ( buf->ReadOneBit() )
 		move->vr_viewRotation = buf->ReadFloat();
 
-	// Read direction
-	if ( buf->ReadOneBit() )
-		move->vr_originOffset[0] = buf->ReadFloat();
+	int count = buf->ReadShort();
 
-	if ( buf->ReadOneBit() )
-		move->vr_originOffset[1] = buf->ReadFloat();
+	bool leftHand = false;
+	bool rightHand = false;
 
-	if ( buf->ReadOneBit() )
-		move->vr_originOffset[2] = buf->ReadFloat();
-
-	if ( buf->ReadOneBit() )
+	for (int i = 0; i < count; i++)
 	{
-		int count = buf->ReadShort();
+		// ok so apparently, due to how the usercmd works, CUserCmd* move is updated multiple times (maybe twice?)
+		// and because i don't bother checking here, i accidently store each tracker twice, and then in CVRBasePlayerShared::UpdateTrackers,
+		// it probably ends up updating that tracker twice for no reason, so check to see if that tracker exists already
 
-		bool leftHand = false;
-		bool rightHand = false;
+		short index = buf->ReadShort();
+		bool trackerFound = false;
 
-		for (int i = 0; i < count; i++)
+		for (int j = 0; j < move->vr_trackers.Count(); j++)
 		{
-			// probably inefficient
+			if ( move->vr_trackers[j].index == index )
+			{
+				trackerFound = true;
+				break;
+			}
+		}
+
+		if ( !trackerFound )
+		{
 			move->vr_trackers.AddToTail( CmdVRTracker() );
 
-			move->vr_trackers[i].index = buf->ReadShort();
+			move->vr_trackers[i].index = index;
 			move->vr_trackers[i].name = GetTrackerName(move->vr_trackers[i].index);
-
-			if ( GetTrackerEnum(move->vr_trackers[i].index) == EVRTracker::LHAND ) 
-			{
-				leftHand = true;
-			}
-			else if ( GetTrackerEnum(move->vr_trackers[i].index) == EVRTracker::RHAND ) 
-			{
-				rightHand = true;
-			}
-
-			if (buf->ReadOneBit()) move->vr_trackers[i].pos[0] = buf->ReadFloat();
-			if (buf->ReadOneBit()) move->vr_trackers[i].pos[1] = buf->ReadFloat();
-			if (buf->ReadOneBit()) move->vr_trackers[i].pos[2] = buf->ReadFloat();
-
-			if (buf->ReadOneBit()) move->vr_trackers[i].ang[0] = buf->ReadFloat();
-			if (buf->ReadOneBit()) move->vr_trackers[i].ang[1] = buf->ReadFloat();
-			if (buf->ReadOneBit()) move->vr_trackers[i].ang[2] = buf->ReadFloat();
-
-			// if (buf->ReadOneBit()) move->vr_trackers[i].vel[0] = buf->ReadFloat();
-			// if (buf->ReadOneBit()) move->vr_trackers[i].vel[1] = buf->ReadFloat();
-			// if (buf->ReadOneBit()) move->vr_trackers[i].vel[2] = buf->ReadFloat();
 		}
 
-		// if left hand exists, read the skeleton
-		if ( leftHand )
+		if ( GetTrackerEnum(move->vr_trackers[i].index) == EVRTracker::LHAND ) 
 		{
-			for (int i = 0; i < 5; i++)
-			{
-				if ( buf->ReadOneBit() )
-					move->vr_fingerCurlsL[i].x = buf->ReadFloat();
-
-				if ( buf->ReadOneBit() )
-					move->vr_fingerCurlsL[i].y = buf->ReadFloat();
-			}
+			leftHand = true;
+		}
+		else if ( GetTrackerEnum(move->vr_trackers[i].index) == EVRTracker::RHAND ) 
+		{
+			rightHand = true;
 		}
 
-		// if right hand exists, read the skeleton
-		if ( rightHand )
-		{
-			for (int i = 0; i < 5; i++)
-			{
-				if ( buf->ReadOneBit() )
-					move->vr_fingerCurlsR[i].x = buf->ReadFloat();
+		move->vr_trackers[i].pos[0] = buf->ReadFloat();
+		move->vr_trackers[i].pos[1] = buf->ReadFloat();
+		move->vr_trackers[i].pos[2] = buf->ReadFloat();
 
-				if ( buf->ReadOneBit() )
-					move->vr_fingerCurlsR[i].y = buf->ReadFloat();
-			}
+		move->vr_trackers[i].ang[0] = buf->ReadFloat();
+		move->vr_trackers[i].ang[1] = buf->ReadFloat();
+		move->vr_trackers[i].ang[2] = buf->ReadFloat();
+
+		// if (buf->ReadOneBit()) move->vr_trackers[i].vel[0] = buf->ReadFloat();
+		// if (buf->ReadOneBit()) move->vr_trackers[i].vel[1] = buf->ReadFloat();
+		// if (buf->ReadOneBit()) move->vr_trackers[i].vel[2] = buf->ReadFloat();
+	}
+
+	// if left hand exists, read the skeleton
+	if ( leftHand )
+	{
+		for (int i = 0; i < 5; i++)
+		{
+			if ( buf->ReadOneBit() )
+				move->vr_fingerCurlsL[i].x = buf->ReadFloat();
+
+			if ( buf->ReadOneBit() )
+				move->vr_fingerCurlsL[i].y = buf->ReadFloat();
+		}
+	}
+
+	// if right hand exists, read the skeleton
+	if ( rightHand )
+	{
+		for (int i = 0; i < 5; i++)
+		{
+			if ( buf->ReadOneBit() )
+				move->vr_fingerCurlsR[i].x = buf->ReadFloat();
+
+			if ( buf->ReadOneBit() )
+				move->vr_fingerCurlsR[i].y = buf->ReadFloat();
 		}
 	}
 }

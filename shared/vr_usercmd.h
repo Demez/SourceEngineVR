@@ -1,8 +1,4 @@
-#ifndef VR_USERCMD_H
-#define VR_USERCMD_H
-#ifdef _WIN32
 #pragma once
-#endif
 
 #include "mathlib/vector.h"
 #include "utlvector.h"
@@ -34,5 +30,4 @@ void WriteUsercmdVR( bf_write *buf, const CUserCmd *to, const CUserCmd *from );
 void WriteUsercmdVR( bf_write *buf, CUserCmd *to, CUserCmd *from );
 #endif
 
-#endif // VR_USERCMD_H
 

@@ -188,7 +188,8 @@ void CVRBasePlayer::PickupObject( CBaseEntity *pObject, bool bLimitMassAndSize )
 	{
 		GetLeftHand()->GrabObject( pObject );
 	}
-	else if ( g_pMoveData->m_nButtons & IN_PICKUP_RIGHT && GetRightHand() && GetRightHand()->GetLastUseEntity() == pObject )
+
+	if ( g_pMoveData->m_nButtons & IN_PICKUP_RIGHT && GetRightHand() && GetRightHand()->GetLastUseEntity() == pObject )
 	{
 		GetRightHand()->GrabObject( pObject );
 	}

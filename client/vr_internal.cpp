@@ -3,6 +3,10 @@
 #include "vr.h"
 #include "filesystem.h"
 
+#if DXVK_VR
+#include "vr_dxvk.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -15,13 +19,38 @@ extern vr::IVRInput*        g_pOVRInput;
 VRSystemInternal            g_VRInt;
 
 IShaderAPI *g_pShaderAPI = 0;
-/*IShaderDeviceMgr* g_pShaderDeviceMgr = 0;
-IShaderDevice *g_pShaderDevice = 0;
-IShaderShadow* g_pShaderShadow = 0;*/
 
 static CSysModule* g_ShaderHInst;
 static CreateInterfaceFn g_shaderApiFactory;
 extern bool g_VRSupported;
+
+#if DXVK_VR
+
+static CSysModule* g_hD3D9;
+
+typedef int (*FuncGetVRSystem)( IDXVK_VRSystem** );
+
+IDXVK_VRSystem* GetDXVK_VRSystem()
+{
+    g_hD3D9 = Sys_LoadModule( "d3d9.dll" );
+
+    if ( !g_hD3D9 )
+        return NULL;
+
+    FuncGetVRSystem funcGetSystem = (FuncGetVRSystem)GetProcAddress( (HMODULE)g_hD3D9, "GetVRSystem" );
+
+    if (!funcGetSystem)
+    {
+        Sys_UnloadModule( g_hD3D9 );
+        return NULL;
+    }
+
+    IDXVK_VRSystem* vrSystem;
+    funcGetSystem( &vrSystem );
+    return vrSystem;
+}
+
+#endif
 
 //-----------------------------------------------------------------------------
 // Creates/destroys the shader implementation for the selected API
@@ -56,6 +85,78 @@ void DestroyShaderAPI()
     }
 }
 
+//-----------------------------------------------------------------------------
+// VRInterface - dxvk interacting with the client's vr system
+//-----------------------------------------------------------------------------
+VRInterface *g_pVRInterface;
+
+void VRInterface::WaitGetPoses()
+{
+    if ( !g_VR.active )
+        return;
+
+    g_VRInt.WaitGetPoses();
+}
+
+void VRInterface::UpdatePoses()
+{
+    if ( !g_VR.active )
+        return;
+
+    g_VR.WaitGetPoses();
+}
+
+static void HandleSubmitError( vr::EVRCompositorError error )
+{
+    if ( error != vr::VRCompositorError_None )
+    {
+        const char* errorMsg = "";
+        switch (error)
+        {
+            case vr::VRCompositorError_DoNotHaveFocus:
+                errorMsg = " - DoNotHaveFocus";
+                break;
+
+            case vr::VRCompositorError_InvalidTexture:
+                errorMsg = " - InvalidTexture";
+                break;
+
+            case vr::VRCompositorError_TextureUsesUnsupportedFormat:
+                errorMsg = " - TextureUsesUnsupportedFormat";
+                break;
+
+            case vr::VRCompositorError_AlreadySubmitted:
+                errorMsg = " - AlreadySubmitted";
+                break;
+                
+            default:
+                break;
+
+        }
+
+        Warning("[VR] vr::VRCompositor() failed to submit - Error %d%s\n", error, errorMsg);
+    }
+}
+
+
+void VRInterface::HandleSubmitError( vr::EVRCompositorError error )
+{
+    ::HandleSubmitError( error );
+}
+
+vr::VRTextureBounds_t VRInterface::GetTextureBounds( vr::EVREye eye )
+{
+    return eye == vr::Eye_Left ? g_VRInt.textureBoundsLeft : g_VRInt.textureBoundsRight;
+}
+
+vr::IVRCompositor* VRInterface::GetCompositor()
+{
+    return vr::VRCompositor();
+}
+
+//-----------------------------------------------------------------------------
+// VRSystemInternal
+//-----------------------------------------------------------------------------
 
 bool VRSystemInternal::InitShaderAPI()
 {
@@ -68,30 +169,9 @@ bool VRSystemInternal::InitShaderAPI()
         return false;
     }
 
-    // g_pShaderDeviceMgr = (IShaderDeviceMgr*)g_shaderApiFactory( SHADER_DEVICE_MGR_INTERFACE_VERSION, 0 );
-    // if ( !g_pShaderDeviceMgr )
-    //     return false;
-
-    // g_pHWConfig = (IHardwareConfigInternal*)shaderApiFn( MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION, 0 );
-    // if ( !g_pHWConfig )
-    //     return false;
-
-    // TODO: use this to check if this is a vr supported shaderapi, if this exists, it does support vr
-    /*g_pShaderAPIVR = (IShaderAPIVR*)g_shaderApiFactory( SHADERAPI_VR_INTERFACE_VERSION, 0 );
-    if ( !g_pShaderAPIVR )
-        return false;*/
-
     g_pShaderAPI = (IShaderAPI*)g_shaderApiFactory( SHADERAPI_INTERFACE_VERSION, 0 );
     if ( !g_pShaderAPI )
         return false;
-
-    /*g_pShaderDevice = (IShaderDevice*)g_shaderApiFactory( SHADER_DEVICE_INTERFACE_VERSION, 0 );
-    if ( !g_pShaderDevice )
-        return false;
-
-    g_pShaderShadow = (IShaderShadow*)g_shaderApiFactory( SHADERSHADOW_INTERFACE_VERSION, 0 );
-    if ( !g_pShaderShadow )
-        return false;*/
 
     return true;
 }
@@ -156,6 +236,9 @@ void VRSystemInternal::InitDX9Device( void* deviceData )
 
 void VRSystemInternal::WaitGetPoses()
 {
+    if ( !g_VR.active )
+        return;
+
     vr::EVRCompositorError error = vr::VRCompositor()->WaitGetPoses( poses, vr::k_unMaxTrackedDeviceCount, NULL, 0 );
 
     if ( error != vr::VRCompositorError_None )
@@ -167,35 +250,22 @@ void VRSystemInternal::WaitGetPoses()
 }
 
 
-// GetComponentStateForBinding
 int VRSystemInternal::SetActionManifest( const char* fileName )
 {
-    char currentDir[MAX_STR_LEN] = "\0";
+    char path[MAX_PATH] = "\0";
+    const char* ret = g_pFullFileSystem->RelativePathToFullPath( fileName, "GAME", path, MAX_PATH );
 
-    // maybe loop through these paths for all possible action sets?
-    // having a specific search path key is a bit shit, but i can't use multiple with openvr
-    g_pFullFileSystem->GetSearchPath( "VR", false, currentDir, MAX_STR_LEN );
-
-    if ( V_strcmp(currentDir, "") == 0 )
+    if ( ret == NULL )
     {
-        // TODO: iterate through the search paths until we find one?
-        g_pFullFileSystem->GetSearchPath( "MOD", false, currentDir, MAX_STR_LEN );
+        Warning("[VR] Failed to find action file \"%s\"\n", fileName);
+        return -1;
     }
 
-    char *pSeperator = strchr( currentDir, ';' );
-    if ( pSeperator )
-        *pSeperator = '\0';
-
-    char path[MAX_STR_LEN];
-
-    // for ( path = strtok( searchPaths, ";" ); path; path = strtok( NULL, ";" ) )
-
-    sprintf_s(path, MAX_STR_LEN, "%sresource%c%s", currentDir, CORRECT_PATH_SEPARATOR, fileName);
-
     g_pOVRInput = vr::VRInput();
+
     if (g_pOVRInput->SetActionManifestPath(path) != vr::VRInputError_None)
     {
-        Warning("[VR] SetActionManifestPath failed\n");
+        Warning("[VR] SetActionManifestPath failed - \"%s\"\n", path);
         return -1;
     }
 
@@ -203,9 +273,11 @@ int VRSystemInternal::SetActionManifest( const char* fileName )
     fopen_s(&file, path, "r");
     if (file == NULL)
     {
-        Warning("[VR] failed to open action manifest\n");
+        Warning("[VR] failed to open action manifest - \"%s\"\n", path);
         return -1;
     }
+
+    DevMsg(1, "[VR] Reading action manifest - \"%s\"\n", path);
 
     memset(actions, 0, sizeof(actions));
 
@@ -216,7 +288,7 @@ int VRSystemInternal::SetActionManifest( const char* fileName )
         if (strchr(word, ']') != nullptr)
             break;
 
-        if (strcmp(word, "name") == 0)
+        if (V_strcmp(word, "name") == 0)
         {
             if (fscanf_s(file, "%*[^\"]\"%[^\"]\"", actions[actionCount].fullname, MAX_STR_LEN) != 1)
                 break;
@@ -231,7 +303,7 @@ int VRSystemInternal::SetActionManifest( const char* fileName )
             g_pOVRInput->GetActionHandle(actions[actionCount].fullname, &(actions[actionCount].handle));
         }
 
-        if (strcmp(word, "type") == 0)
+        if (V_strcmp(word, "type") == 0)
         {
             if (fscanf_s(file, "%*[^\"]\"%[^\"]\"", actions[actionCount].type, MAX_STR_LEN) != 1)
                 break;
@@ -287,8 +359,10 @@ extern ConVar vr_one_rt_test;
 
 void VRSystemInternal::Submit( bool isDX11, void* submitData, vr::EVREye eye )
 {
-    vr::Texture_t vrTexture;
+#if !DXVK_VR
+
     vr::VRTextureBounds_t textureBounds = eye == vr::Eye_Left ? g_VRInt.textureBoundsLeft : g_VRInt.textureBoundsRight;
+    vr::Texture_t vrTexture;
 
     if ( isDX11 )
     {
@@ -325,12 +399,9 @@ void VRSystemInternal::Submit( bool isDX11, void* submitData, vr::EVREye eye )
         };
     }
 
-    vr::EVRCompositorError error = vr::VRCompositor()->Submit( eye, &vrTexture, &textureBounds );
+    HandleSubmitError( vr::VRCompositor()->Submit( eye, &vrTexture, &textureBounds ) );
 
-    if ( error != vr::VRCompositorError_None )
-    {
-        Warning("[VR] vr::VRCompositor() failed to submit - Error %d\n", error);
-    }
+#endif
 }
 
 
@@ -374,4 +445,5 @@ void VRSystemInternal::CalcTextureBounds( float &aspect, float &fov )
     // fov = RAD2DEG(2.0f * atan(tanHalfFov.y));
     // fov = RAD2DEG(atan(tanHalfFov.y / 2.0f));
 }
+
 

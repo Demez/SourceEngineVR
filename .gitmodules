@@ -4,3 +4,6 @@
 [submodule "comet_ik"]
 	path = comet_ik
 	url = https://github.com/Demez/ik.git
+[submodule "dxvk"]
+	path = dxvk
+	url = https://github.com/Demez/dxvk.git

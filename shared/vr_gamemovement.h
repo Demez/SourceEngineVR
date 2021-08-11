@@ -15,15 +15,14 @@
 class CVRMoveData: public CMoveData
 {
 public:
-	CmdVRTracker* GetTracker( const char* name );
+	CmdVRTracker* GetTracker( EVRTracker tracker );
 
-	CmdVRTracker* GetHeadset()          { return GetTracker("hmd"); }
-	CmdVRTracker* GetLeftController()   { return GetTracker("pose_lefthand"); }
-	CmdVRTracker* GetRightController()  { return GetTracker("pose_righthand"); }
+	CmdVRTracker* GetHeadset()          { return GetTracker( EVRTracker::HMD ); }
+	CmdVRTracker* GetLeftController()   { return GetTracker( EVRTracker::LHAND ); }
+	CmdVRTracker* GetRightController()  { return GetTracker( EVRTracker::RHAND ); }
 
 	bool						vr_active;
 	float						vr_viewRotation;
-	Vector						vr_originOffset;
 	CUtlVector< CmdVRTracker >	vr_trackers;
 };
 
@@ -57,16 +56,15 @@ public:
 	virtual void                    ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove );
 	virtual void                    PlayerMove();
 
-	virtual void                    PlaySpaceMoveWalk( CVRMoveData *pMove );
-	virtual void                    PlaySpaceMoveFrozen( CVRMoveData *pMove );
-	virtual bool                    PlaySpaceMoveLadder( CVRMoveData *pMove );
+	virtual void                    PlaySpaceMove( CVRBasePlayerShared* vrPlayer, CVRMoveData *pMove );
+	virtual void                    PlaySpaceMoveWalk( CVRBasePlayerShared* vrPlayer, CVRMoveData *pMove );
+	virtual void                    PlaySpaceMoveFrozen( CVRBasePlayerShared* vrPlayer, CVRMoveData *pMove );
+	virtual bool                    PlaySpaceMoveLadder( CVRBasePlayerShared* vrPlayer, CVRMoveData *pMove );
 
 	// will return something else later, or have trace_t in it
 	virtual bool                    CheckForLadderModelHack();
 
 	virtual void                    ProcessVRMovement( CVRBasePlayerShared *pPlayer, CVRMoveData *pMove );
-
-	Vector					        m_viewOriginOffset; // offset of view based on where bbox is
 };
 
 

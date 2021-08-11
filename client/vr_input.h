@@ -17,7 +17,6 @@ public:
 
 	CVRInput()
 	{
-		oldViewPos.Zero();
 		bFlashlightOn = false;
 		bInNextWeapon = false;
 	}
@@ -37,14 +36,6 @@ public:
 #else
 	virtual void AdjustAngles( float frametime );
 #endif
-
-	Vector oldViewPos;
-
-	Vector headOrigin;
-	Vector lastHeadOrigin;
-
-	// test
-	QAngle m_hmdPrevAngles;
 
 	int m_bits;
 	bool bFlashlightOn;

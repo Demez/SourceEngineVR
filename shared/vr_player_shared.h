@@ -18,8 +18,8 @@
 class CVRTracker;
 class CVRController;
 
-// #define MAX_VR_TRACKERS (int)EVRTracker::COUNT
-#define MAX_VR_TRACKERS 6
+#define MAX_VR_TRACKERS (unsigned int)EVRTracker::COUNT
+// #define MAX_VR_TRACKERS 6
 
 // #include "c_hl2_playerlocaldata.h"
 // #include "vr_game_movement.h"
@@ -40,12 +40,12 @@ public:
 
 #ifdef GAME_DLL
 	virtual bool                    CreateVPhysics();
-	void                            InitBoneFollowers();
 #endif
 	virtual void                    OnVREnabled();
 	virtual void                    OnVRDisabled();
 
 	virtual void                    PreThink();
+	virtual void                    PostThink();
 
 	virtual Vector                  Weapon_ShootPosition();
 	virtual QAngle                  GetWeaponShootAng();
@@ -63,8 +63,13 @@ public:
 	virtual Vector                  EyePosition();
 	virtual const QAngle&           EyeAngles();
 
+	virtual void                    AddViewRotation( float offset );
+	virtual void                    CorrectViewRotateOffset();
+	virtual float                   VRHeightOffset();
+
 	virtual void                    HandleVRMoveData();
 	virtual void                    UpdateTrackers();
+	virtual void                    ClearCmdTrackers();
 
 	CVRTracker*                     CreateTracker(CmdVRTracker& cmdTracker);
 	CVRTracker*                     GetTracker( EVRTracker type );
@@ -82,19 +87,31 @@ public:
 	// Other
 	// ------------------------------------------------------------------------------------------------
 
-#ifdef GAME_DLL
-	// CBoneFollowerManager	m_BoneFollowerManager;
-#endif
-
 	// CNetworkArray( CHandle<CVRTracker>, m_VRTrackers, MAX_VR_TRACKERS );
+	// CNetworkArray( CVRTracker*, m_VRTrackers, MAX_VR_TRACKERS );
+	// CNetworkArray( CVRTracker, m_VRTrackers, MAX_VR_TRACKERS );
+
+	// CNetworkArray( CmdVRTracker, m_VRCmdTrackers, MAX_VR_TRACKERS );
+
+	// CNetworkArray( NetworkVRTracker, m_VRCmdTrackers, MAX_VR_TRACKERS );
+
+	// the best i can really do for this
+	CNetworkArray( short, m_vrtrackers_index, MAX_VR_TRACKERS );
+	CNetworkArray( Vector, m_vrtrackers_pos, MAX_VR_TRACKERS );
+	CNetworkArray( QAngle, m_vrtrackers_ang, MAX_VR_TRACKERS );
+
 	CUtlVector<CVRTracker*> m_VRTrackers;
 
-	// CNetworkVar( bool, m_bInVR );
-	bool m_bInVR;
+	CNetworkVar( bool, m_bInVR );
 
 	// network this? only used on the client at the moment
 	QAngle m_vrViewAngles;
-	Vector m_viewOriginOffset;  // calculated from vr_gamemovement.cpp
+
+	CNetworkVector( m_viewOriginOffset );
+	CNetworkVector( m_vrOriginOffset );
+
+	CNetworkVar( float, m_vrViewRotation );
+	float m_vrViewRotationGame;  // server view rotation changes, separate from client view rotation
 
 	Vector m_minSize;
 	Vector m_maxSize;

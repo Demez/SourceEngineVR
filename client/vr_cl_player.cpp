@@ -32,7 +32,29 @@ ConVar vr_cl_interp( "vr_interp_player", "0.1", FCVAR_CLIENTDLL );
 ConVar vr_cl_hidehead( "vr_cl_hidehead", "30", FCVAR_CLIENTDLL, "Distance to hide the head by, 0 or keeps the head always visible" );
 ConVar vr_cl_headdist( "vr_cl_headdist", "0", FCVAR_CLIENTDLL, "Distance to offset the head back by" );
 ConVar vr_cl_headheight( "vr_cl_headheight", "80", FCVAR_CLIENTDLL, "height of the head from the origin" );
-ConVar vr_ik( "vr_ik", "0", FCVAR_ARCHIVE, "" );
+
+
+void CC_SetVRIKEnabled( IConVar *var, const char *pOldValue, float flOldValue );
+
+ConVar vr_ik( "vr_ik", "0", FCVAR_ARCHIVE, "", CC_SetVRIKEnabled);
+
+void CC_SetVRIKEnabled( IConVar *var, const char *pOldValue, float flOldValue )
+{
+	if ( vr_ik.GetBool() == g_VRIK.m_enabled )
+	{
+		return;
+	}
+
+	if ( vr_ik.GetBool() )
+	{
+		g_VRIK.Init();
+	}
+	else
+	{
+		g_VRIK.DeInit();
+	}
+}
+
 
 #if defined( CVRBasePlayer )
 	#undef CVRBasePlayer	
@@ -426,10 +448,14 @@ bool C_VRBasePlayer::CreateMove( float flInputSampleTime, CUserCmd *pCmd )
 
 void C_VRBasePlayer::ClientThink()
 {
+	BaseClass::ClientThink();
+
 	m_prevTrackerCount = m_trackerCount;
 	m_trackerCount = 0;
 
 	PredictCoordinates();
+
+	UpdateTrackers();
 }
 
 
@@ -450,29 +476,53 @@ void C_VRBasePlayer::PredictCoordinates()
 }
 
 
+void C_VRBasePlayer::AddLocalViewRotation( float offset )
+{
+	m_vrViewRotationLocal += offset;
+	CorrectViewRotateOffset();
+}
+
+
+void C_VRBasePlayer::PlayerUse()
+{
+	if ( !m_bInVR )
+	{
+		BaseClass::PlayerUse();
+		return;
+	}
+
+	/*if ( GetLeftHand() )
+	{
+		GetLeftHand()->m_drawGrabDebug = ( g_pMoveData->m_nButtons & IN_PICKUP_LEFT );
+	}
+
+	if ( GetRightHand() )
+	{
+		GetRightHand()->m_drawGrabDebug = ( g_pMoveData->m_nButtons & IN_PICKUP_RIGHT );
+	}*/
+}
+
+
+bool C_VRBasePlayer::ShouldDraw()
+{
+	if ( g_VR.active && vr_ik.GetBool() )
+		return true;
+
+	return BaseClass::ShouldDraw();
+}
+
+
 // ------------------------------------------------------------------------------------------------
 // New VR Functions
 // ------------------------------------------------------------------------------------------------
-void C_VRBasePlayer::SetViewRotateOffset( float offset )
-{
-	viewOffset = offset;
-	CorrectViewRotateOffset();
-}
-
-
-void C_VRBasePlayer::AddViewRotateOffset( float offset )
-{
-	viewOffset += offset;
-	CorrectViewRotateOffset();
-}
-
-
 void C_VRBasePlayer::CorrectViewRotateOffset()
 {
-	if ( viewOffset > 360.0 )
-		viewOffset -= 360.0;
-	else if ( viewOffset < -360.0 )
-		viewOffset += 360.0;
+	BaseClass::CorrectViewRotateOffset();
+
+	if ( m_vrViewRotationLocal > 360.0 )
+		m_vrViewRotationLocal -= 360.0;
+	else if ( m_vrViewRotationLocal < -360.0 )
+		m_vrViewRotationLocal += 360.0;
 
 	if ( g_VR.active )
 	{
@@ -480,28 +530,28 @@ void C_VRBasePlayer::CorrectViewRotateOffset()
 		if ( headset == NULL )
 			return;
 
-		m_vrViewAngles = headset->ang;
-		m_vrViewAngles.y += viewOffset;
+		m_vrViewAngles = headset->ang + GetViewRotationAng();
 	}
 	else
 	{
-		m_vrViewAngles = BaseClass::EyeAngles();
+		m_vrViewAngles = BaseClass::EyeAngles() + GetViewRotationAng();
 	}
 }
 
 
 QAngle C_VRBasePlayer::GetViewRotationAng()
 {
-	return QAngle(0, viewOffset, 0);
+	// i don't like having 2 separate view rotation floats, but i need one on the server for portals
+	// unless i can figure out a better way
+	// return QAngle(0, m_vrViewRotationLocal + m_vrViewRotation, 0);
+	return QAngle(0, m_vrViewRotation, 0);
 }
 
 
 void C_VRBasePlayer::OnVREnabled()
 {
 	BaseClass::OnVREnabled();
-
-	SetupPlayerScale();
-	LoadModelBones( GetModelPtr() );
+	OnNewModel();
 }
 
 
@@ -520,8 +570,8 @@ CStudioHdr* C_VRBasePlayer::OnNewModel()
 
 	if ( m_bInVR )
 	{
-		OnVRDisabled();
-		OnVREnabled();
+		SetupPlayerScale();
+		LoadModelBones( GetModelPtr() );
 	}
 
 	return hdr;
@@ -541,7 +591,8 @@ CON_COMMAND( vr_test_scale, "" )
 
 void C_VRBasePlayer::SetupPlayerScale()
 {
-	if ( IsLocalPlayer() )
+	// UNFINISHED: this ideally would scale the player based on the playermodel height, like in vrchat or neos vr
+	if ( g_VR.active && IsLocalPlayer() )
 	{
 		int headBone = LookupBone( GetBoneName( EVRBone::Head ) );
 		if ( headBone != -1 )
@@ -748,19 +799,15 @@ void C_VRBasePlayer::RecurseApplyBoneTransforms( CVRBoneInfo* boneInfo )
 	}
 	else*/ if ( boneInfo->hasNewCoord )
 	{
-#if ENGINE_NEW
-		matrix3x4a_t worldToBone;
+		matrix3x4a_t worldToBone, local;
 		MatrixInvert( boneInfo->GetParent()->GetCoord(), worldToBone );
 
-		matrix3x4a_t local;
+#if ENGINE_NEW
 		ConcatTransforms_Aligned( worldToBone, boneInfo->newCoord, local );
 #else
-		matrix3x4_t worldToBone;
-		MatrixInvert( boneInfo->GetParent()->GetCoord(), worldToBone );
-
-		matrix3x4_t local;
 		ConcatTransforms( worldToBone, boneInfo->newCoord, local );
 #endif
+
 		Vector bonePos;
 		QAngle localAngles;
 		MatrixAngles( local, localAngles );
@@ -877,15 +924,12 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 	
 	AngleMatrix( cameraAngles, newTransform );
 
-	if ( !m_bInVR )
+	if ( !m_bInVR || (m_bInVR && !vr_ik.GetBool()) )
 	{
 		MatrixSetColumn( cameraOrigin, 3, newTransform );
 		BaseClass::BuildTransformations( hdr, pos, q, newTransform, boneMask, boneComputed );
 		return;
 	}
-
-	if ( !vr_ik.GetBool() )
-		return;
 
 	UpdateBoneInformation( hdr );
 
@@ -917,7 +961,7 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 	// do the hip first if available?
 	if ( GetTracker( EVRTracker::HIP ) )
 	{
-		CVRTracker* pTracker = GetTracker( EVRTracker::HIP );
+		// CVRTracker* pTracker = GetTracker( EVRTracker::HIP );
 
 		// do ik stuff here with g_VRIK
 
@@ -1243,7 +1287,8 @@ void C_VRBasePlayer::BuildTrackerTransformations( CStudioHdr *hdr, Vector *pos, 
 		MatrixGetColumn( pBoneToWorld[2], 3, handBonePos );
 		// AngleMatrix( pTracker->GetAbsAngles(), handBonePos, pBoneToWorld[2] ); 
 
-		bool hmm = Studio_SolveIK( 0, 1, 2, pTracker->GetAbsOrigin(), pBoneToWorld );
+		Vector origin = pTracker->GetAbsOrigin();
+		bool hmm = Studio_SolveIK( 0, 1, 2, origin, pBoneToWorld );
 		// bool hmm = VR_SolveIK( 0, 1, 2, pTracker->GetAbsOrigin(), pBoneToWorld );
 		// bool hmm = VR_SolveIK( 0, 1, 2, pTracker->GetAbsOrigin(), ((CVRController*)pTracker)->GetPointDir(), pBoneToWorld );
 

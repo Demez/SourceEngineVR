@@ -7,20 +7,35 @@
 enum class EVRTracker;
 
 
+// basically copied from openvr.h
+enum class EVRDeviceType
+{
+	Invalid = 0,			// the ID was not valid.
+	Headset = 1,			// Head-Mounted Displays
+	Controller = 2,			// Tracked controllers
+	Tracker = 3,			// Generic trackers, similar to controllers
+	BaseStation = 4,		// Camera and base stations that serve as tracking reference points
+	// DisplayRedirect = 5,	// Accessories that aren't necessarily tracked themselves, but may redirect video output from other tracked devices
+	Max
+};
+
+
 class VRDeviceType
 {
 public:
 	VRDeviceType();
 	~VRDeviceType();
 
-	void            Init( const char* m_path );
+	void            Init( const char* path );
 	const char*	    GetTrackerModelName( EVRTracker tracker );
+	void            SetPoseName( const char* name );
 
 	// char            m_name[128];  // device name
 	const char*     m_name;  // device name
+	EVRDeviceType   m_type = EVRDeviceType::Invalid;
 
-							 // CUtlMap< const char*, const char* > m_trackerModels;
-	CUtlVector< const char* > m_trackerModels;
+	CUtlMap< EVRTracker, const char* > m_trackerModels;
+	// CUtlVector< const char* > m_trackerModels;
 };
 
 

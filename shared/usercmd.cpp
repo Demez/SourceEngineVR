@@ -223,10 +223,17 @@ void WriteUsercmd( bf_write *buf, const CUserCmd *to, const CUserCmd *from )
 	}
 #endif
 
+#if VR
+	WriteUsercmdVR( buf, to, from );
+#endif
+
 #ifndef INFESTED_DLL		// alien swarm doesn't need these
-	// TODO: Can probably get away with fewer bits.
-	WriteUserCmdDeltaShort( buf, "mousedx", from->mousedx, to->mousedx );
-	WriteUserCmdDeltaShort( buf, "mousedy", from->mousedy, to->mousedy );
+	if ( !to->vr_active )
+	{
+		// TODO: Can probably get away with fewer bits.
+		WriteUserCmdDeltaShort( buf, "mousedx", from->mousedx, to->mousedx );
+		WriteUserCmdDeltaShort( buf, "mousedy", from->mousedy, to->mousedy );
+	}
 #endif
 
 #if defined( HL2_CLIENT_DLL )
@@ -253,10 +260,6 @@ void WriteUsercmd( bf_write *buf, const CUserCmd *to, const CUserCmd *from )
 	{
 		buf->WriteOneBit( 0 );
 	}
-#endif
-	
-#if VR
-	WriteUsercmdVR( buf, to, from );
 #endif
 
 	/*if ( IsHeadTrackingEnabled() )
@@ -400,15 +403,22 @@ void ReadUsercmd( bf_read *buf, CUserCmd *move, CUserCmd *from )
 
 	move->random_seed = MD5_PseudoRandom( move->command_number ) & 0x7fffffff;
 
-#ifndef INFESTED_DLL		// alien swarm doesn't need these
-	if ( buf->ReadOneBit() )
-	{
-		move->mousedx = buf->ReadShort();
-	}
+#if VR
+	ReadUsercmdVR( buf, move, from );
+#endif
 
-	if ( buf->ReadOneBit() )
+#ifndef INFESTED_DLL		// alien swarm doesn't need these
+	if ( !move->vr_active )
 	{
-		move->mousedy = buf->ReadShort();
+		if ( buf->ReadOneBit() )
+		{
+			move->mousedx = buf->ReadShort();
+		}
+
+		if ( buf->ReadOneBit() )
+		{
+			move->mousedy = buf->ReadShort();
+		}
 	}
 #endif
 
@@ -425,10 +435,6 @@ void ReadUsercmd( bf_read *buf, CUserCmd *move, CUserCmd *from )
 			move->entitygroundcontact[i].maxheight = buf->ReadBitCoord( );
 		}
 	}
-#endif
-
-#if VR
-	ReadUsercmdVR( buf, move, from );
 #endif
 
 	/*if ( IsHeadTrackingEnabled() )

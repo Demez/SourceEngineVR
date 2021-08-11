@@ -37,6 +37,8 @@ public:
 	bool UpdateArm( C_VRBasePlayer* pPlayer, CVRTracker* pTracker, CVRBoneInfo* handInfo, CVRBoneInfo* clavicleBoneInfo );
 
 	void SetNodeCoords( C_VRBasePlayer* pPlayer, CVRTracker* pTracker, ik_node_t* node, CVRBoneInfo* boneInfo );
+
+	bool m_enabled;
 };
 
 

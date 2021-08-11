@@ -13,7 +13,7 @@ extern CMoveData* g_pMoveData;
 CVRMoveData* g_VRMoveData = (CVRMoveData*)g_pMoveData;
 
 
-ConVar vr_dbg_playspacemove( "vr_dbg_playspacemove", "0" );
+ConVar vr_dbg_playspacemove( "vr_dbg_playspacemove", "0", FCVAR_REPLICATED );
 
 
 CVRMoveData* GetVRMoveData()
@@ -22,11 +22,11 @@ CVRMoveData* GetVRMoveData()
 }
 
 
-CmdVRTracker* CVRMoveData::GetTracker( const char* name )
+CmdVRTracker* CVRMoveData::GetTracker( EVRTracker tracker )
 {
 	for (int i = 0; i < vr_trackers.Count(); i++)
 	{
-		if ( V_strcmp(vr_trackers[i].name, name) == 0 )
+		if ( vr_trackers[i].index == (short)tracker - 1 )
 			return &vr_trackers[i];
 	}
 
@@ -39,7 +39,6 @@ CmdVRTracker* CVRMoveData::GetTracker( const char* name )
 //-----------------------------------------------------------------------------
 CVRGameMovement::CVRGameMovement()
 {
-	m_viewOriginOffset.Init();
 }
 
 
@@ -78,26 +77,28 @@ const Vector& CVRGameMovement::GetPlayerMaxs( void ) const
 void CVRGameMovement::PlayerMove()
 {
 	BaseClass::PlayerMove();
+}
 
-	CVRMoveData* pMove = GetVRMoveData();
 
+void CVRGameMovement::PlaySpaceMove( CVRBasePlayerShared* vrPlayer, CVRMoveData* pMove )
+{
 	if ( !pMove->vr_active )
 		return;
 
 	switch (player->GetMoveType())
 	{
 	case MOVETYPE_WALK:
-		PlaySpaceMoveWalk( pMove );
+		PlaySpaceMoveWalk( vrPlayer, pMove );
 		break;
 
 	// DEMEZ TODO: handle these
 	case MOVETYPE_NONE:
-		PlaySpaceMoveFrozen( pMove );
+		PlaySpaceMoveFrozen( vrPlayer, pMove );
 		break;
 
 	case MOVETYPE_LADDER:
-		// PlaySpaceMoveLadder( pMove );
-		DevMsg( 1, "[VR] Unimplemented VR movetype %i on (%i) 0=cl 1=sv\n", player->GetMoveType(), player->IsServer() );
+		PlaySpaceMoveLadder( vrPlayer, pMove );
+		// DevMsg( 1, "[VR] Unimplemented VR movetype %i on (%i) 0=cl 1=sv\n", player->GetMoveType(), player->IsServer() );
 		break;
 
 	case MOVETYPE_NOCLIP:
@@ -115,26 +116,34 @@ void CVRGameMovement::PlayerMove()
 void CVRGameMovement::ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove )
 {
 	BaseClass::ProcessMovement( pPlayer, pMove );
-	// ProcessVRMovement( (CVRBasePlayerShared*)pPlayer, (CVRMoveData*)pMove );
+
+	CVRBasePlayerShared* vrPlayer = (CVRBasePlayerShared*)pPlayer;
+	CVRMoveData* vrMove = (CVRMoveData*)pMove;
+
+	vrPlayer->HandleVRMoveData();
+	PlaySpaceMove( vrPlayer, vrMove );
+
+	// ProcessVRMovement( vrPlayer, vrMove );
 }
 
 
-void CVRGameMovement::PlaySpaceMoveWalk( CVRMoveData *pMove )
+void CVRGameMovement::PlaySpaceMoveWalk( CVRBasePlayerShared* vrPlayer, CVRMoveData *pMove )
 {
 	// subject to change
 	if ( CheckForLadderModelHack() )
 	{
-		if ( PlaySpaceMoveLadder( pMove ) )
+		if ( PlaySpaceMoveLadder( vrPlayer, pMove ) )
 		{
 			return;
 		}
 	}
 
-	Vector vrPos = pMove->vr_originOffset;
+	Vector viewOffset = vrPlayer->m_viewOriginOffset;
+	Vector vrPos = vrPlayer->m_vrOriginOffset;
 	vrPos.z = 0;
 
-	Vector viewOrigin = pMove->GetAbsOrigin() + m_viewOriginOffset;
-	viewOrigin.z -= m_viewOriginOffset.z;
+	Vector viewOrigin = pMove->GetAbsOrigin() + viewOffset;
+	viewOrigin.z -= viewOffset.z;
 
 	Vector goalPos = viewOrigin + vrPos;
 	Vector newPos = goalPos;
@@ -152,6 +161,10 @@ void CVRGameMovement::PlaySpaceMoveWalk( CVRMoveData *pMove )
 	}
 
 	// do another trace up for steps or slopes
+	// VR TODO: it's easy to move up small props when trying to pick them up
+	// can we change how the player should collide with small props when for in vr?
+	// i think so, since there used to be a check for small props in multiplayer to be disabled, which i have disabled anyway
+	// might be able to use that calculation in the player collision rules
 	if ( trace.fraction != 1 && player->m_Local.m_bAllowAutoMovement )
 	{
 		Vector upGoalPos = goalPos;
@@ -192,32 +205,31 @@ void CVRGameMovement::PlaySpaceMoveWalk( CVRMoveData *pMove )
 	if ( movePlayerOrigin )
 	{
 		mv->SetAbsOrigin( newPos );
-		m_viewOriginOffset.Init();
+		viewOffset.Init();
 	}
 	else
 	{
 		Vector goalDiff = goalPos - newPos;
 		Vector posDiff = newPos - viewOrigin;
-		m_viewOriginOffset += goalDiff + posDiff;
+		viewOffset += goalDiff + posDiff;
 	}
 
-	m_viewOriginOffset.z = pMove->GetHeadset() ? pMove->GetHeadset()->pos.z : 0.0f;
+	viewOffset.z = pMove->GetHeadset() ? pMove->GetHeadset()->pos.z : 0.0f;
 
-	GetVRPlayer()->m_viewOriginOffset = m_viewOriginOffset;
+	vrPlayer->m_viewOriginOffset = viewOffset;
 
 	if ( vr_dbg_playspacemove.GetBool() )
 	{
 		if ( newPos.DistTo( pMove->GetAbsOrigin() ) > 0.001f )
 		{
-			debugoverlay->AddLineOverlay( pMove->GetAbsOrigin() + Vector(0, 0, 8), newPos + Vector(0, 0, 8), 0, 255, 0, true, 0.0f );
-			// NDebugOverlay::Line( viewOrigin, newPos, 0, 0, 255, false, 0.0f );
+			debugoverlay->AddLineOverlay( pMove->GetAbsOrigin(), newPos, 0, 255, 0, true, 0.0f );
 		}
 
 		engine->Con_NPrintf( 20, "New Origin:               %s\n", VecToString(newPos) );
 		engine->Con_NPrintf( 21, "Goal Origin:              %s\n", VecToString(goalPos) );
 		engine->Con_NPrintf( 22, "Player Origin:            %s\n", VecToString(pMove->GetAbsOrigin()) );
 		engine->Con_NPrintf( 23, "View Origin:              %s\n", VecToString(viewOrigin) );
-		engine->Con_NPrintf( 24, "View Offset from Origin:  %s\n", VecToString(m_viewOriginOffset) );
+		engine->Con_NPrintf( 24, "View Offset from Origin:  %s\n", VecToString(viewOffset) );
 		engine->Con_NPrintf( 25, "Trace Fraction: %.6f\n", trace.fraction );
 		engine->Con_NPrintf( 26, "Should Move Player: %s\n", movePlayerOrigin ? "YES" : "NO" );
 		engine->Con_NPrintf( 27, "Is Moving Up: %s\n", isMovingUp ? "YES" : "NO" );
@@ -226,13 +238,16 @@ void CVRGameMovement::PlaySpaceMoveWalk( CVRMoveData *pMove )
 
 
 
-void CVRGameMovement::PlaySpaceMoveFrozen( CVRMoveData *pMove )
+void CVRGameMovement::PlaySpaceMoveFrozen( CVRBasePlayerShared* vrPlayer, CVRMoveData *pMove )
 {
-	GetVRPlayer()->m_viewOriginOffset = pMove->vr_originOffset;
+	// VR TODO: add in some bounds check so you don't move too far out
+
+	Vector viewPos = pMove->GetHeadset() ? pMove->GetHeadset()->pos : vec3_origin;
+	VectorYawRotate( viewPos, vrPlayer->m_vrViewRotation, vrPlayer->m_viewOriginOffset.GetForModify() );
 }
 
 
-bool CVRGameMovement::PlaySpaceMoveLadder( CVRMoveData *pMove )
+bool CVRGameMovement::PlaySpaceMoveLadder( CVRBasePlayerShared* vrPlayer, CVRMoveData *pMove )
 {
 	// DEMEZ TODO: implement
 	// plans are to have a new vr ladder entity to check for, if it does not exist, just use PlaySpaceMoveFrozen()
@@ -244,7 +259,7 @@ bool CVRGameMovement::PlaySpaceMoveLadder( CVRMoveData *pMove )
 	// or i could in theory, update the existing ladder entities and try to generate some box collisions? idk
 	// or do what's in CheckForLadderModelHack(), might end up doing that tbh
 
-	PlaySpaceMoveFrozen( pMove );
+	PlaySpaceMoveFrozen( vrPlayer, pMove );
 
 	return true;
 }
@@ -261,9 +276,6 @@ void CVRGameMovement::ProcessVRMovement( CVRBasePlayerShared *pPlayer, CVRMoveDa
 {
 	if ( !pMove->vr_active || pPlayer == NULL || pMove == NULL )
 		return;
-
-	// really shouldn't be here since this needs prediction on for the client, so it won't work in single player
-	// pPlayer->UpdateTrackers();
 }
 
 

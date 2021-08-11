@@ -202,6 +202,8 @@ public:
 	virtual bool					CreateMove( float flInputSampleTime, CUserCmd *pCmd );
 	virtual void                    ClientThink();
 	virtual void                    PredictCoordinates();
+	virtual void                    PlayerUse();
+	virtual bool                    ShouldDraw();
 
 	// ------------------------------------------------------------------------------------------------
 	// Playermodel controlling
@@ -248,8 +250,7 @@ public:
 	virtual void                    OnVREnabled();
 	virtual void                    OnVRDisabled();
 
-	virtual void                    SetViewRotateOffset( float offset );
-	virtual void                    AddViewRotateOffset( float offset );
+	virtual void                    AddLocalViewRotation( float offset );
 	virtual void                    CorrectViewRotateOffset();
 	virtual QAngle                  GetViewRotationAng();
 
@@ -274,7 +275,7 @@ public:
 	// Vars
 	// ------------------------------------------------------------------------------------------------
 	float                           lastViewHeight;
-	float                           viewOffset;
+	float                           m_vrViewRotationLocal;
 	int                             m_trackerCount;
 	int                             m_prevTrackerCount;
 

@@ -3,6 +3,7 @@
 #ifdef CLIENT_DLL
 #include "c_baseentity.h"
 #include "c_baseanimating.h"
+#include "beamdraw.h"
 #define CBaseEntity C_BaseEntity
 // #define CVRTracker C_VRTracker
 // #define CVRController C_VRController
@@ -33,22 +34,20 @@ struct vr_shadowcontrol_params_t : public hlshadowcontrol_params_t
 
 // These trackers are used for the hands only, they allow you to pickup physics props (or more in the future)
 class CVRController: public CVRTracker, public IMotionEvent
-#ifdef CLIENT_DLL
-	// DEMEZ TODO: try using this later
-	// , public CDefaultClientRenderable
-#endif
 {
 	typedef CVRTracker BaseClass;
 
 public:
 
-	virtual void                Spawn();
+	CVRController();
+	virtual ~CVRController();
 
 	virtual void                InitTracker( CmdVRTracker& cmdTracker, CVRBasePlayerShared* pPlayer );
 	virtual void                UpdateTracker( CmdVRTracker& cmdTracker );
 
 #ifdef CLIENT_DLL
-	// virtual int                 DrawModel( int flags RENDER_INSTANCE_INPUT );  // i hate this macro
+	// override to draw the controller beam as well
+	virtual int                 DrawModel( int flags RENDER_INSTANCE_INPUT );  // i hate this macro
 #endif
 
 	//---------------------------------------------------------------
@@ -61,6 +60,11 @@ public:
 	virtual CBaseEntity*        FindGrabEntity();
 	virtual CBaseEntity*        FindEntityBase( bool mustBeInPalm = false );
 
+#ifdef GAME_DLL
+	virtual bool                Intersects( CBaseEntity *pOther );
+#endif
+
+	// should be in the GAME_DLL ifdef
 	virtual void                GrabObject( CBaseEntity* pEntity );
 	virtual void                DropObject();
 	virtual void                DropObjectIfReleased();
@@ -109,6 +113,15 @@ public:
 
 	bool                        m_pointerEnabled;
 	Vector                      m_lerpedPointDir;
+
+	int                         m_mdl_openxr_aim;
+
+#ifdef CLIENT_DLL
+	// bool                        m_drawGrabDebug;
+
+	// test
+	Beam_t*                     m_pBeam;
+#endif
 };
 
 

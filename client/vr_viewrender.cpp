@@ -10,8 +10,14 @@
 #include "materialsystem/imaterialvar.h"
 #include "materialsystem/itexture.h"
 
+#if DXVK_VR
+#include "vr_dxvk.h"
+extern IDXVK_VRSystem* g_pDXVK;
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
 
 ConVar vr_desktop_eye("vr_desktop_eye", "1", FCVAR_ARCHIVE, "0 - no screen view, 1 - crop left eye, 2 - the right eye, 3 - rerender the desktop view", true, 0.0f, true, 3.0f);
 ConVar vr_test_cam("vr_test_cam", "1", FCVAR_ARCHIVE);
@@ -183,13 +189,17 @@ void CVRViewRender::RenderViewDesktop( const CViewSetup &view, const CViewSetup 
 	}
 }
 
+// ConVar vr_viewhack("vr_viewhack", "1");
 
 void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudView, int nClearFlags, int whatToDraw )
 {
 	if ( vr_dbg_rt_test.GetBool() || g_VR.active )
 	{
+#if DXVK_VR
+		if ( g_pDXVK ) g_pDXVK->SetRenderTargetActive( true );
+#endif
 		// should be used here?
-		if ( vr_waitgetposes_test.GetBool() )
+		if ( vr_waitgetposes_test.GetInt() == 1 )
 			g_VR.WaitGetPoses();
 
 		g_VRRenderer.UpdateEyeRenderTargets();
@@ -198,24 +208,41 @@ void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudVie
 
 		g_VRRenderer.PreRender();
 
+		CViewSetup viewHack(view);
+		CViewSetup hudViewHack(hudView);
+
+		// VR HACK: because of having the vr tracker updates in ClientThink, it's delayed slightly
+		// until i can find a better place, we're gonna grab the view angles directly from the vr system, since that's the worst part
+		// or im completely wrong about this actually lol
+		/*VRHostTracker* hmd = g_VR.GetHeadset();
+		C_VRBasePlayer* pl = GetLocalVRPlayer();
+		if ( hmd && pl && vr_viewhack.GetBool() )
+		{
+			QAngle newAng = hmd->ang;
+			newAng.y += pl->localVRViewOffset;
+
+			viewHack.angles = hmd->ang;
+			hudViewHack.angles = hmd->ang;
+
+			// viewHack.angles = pl->EyeAngles();
+			// hudViewHack.angles = pl->EyeAngles();
+		}*/
+
 		// draw main screen
-		RenderViewDesktop( view, hudView, nClearFlags, whatToDraw );
+		RenderViewDesktop( viewHack, hudViewHack, nClearFlags, whatToDraw );
 		
 		if ( vr_desktop_eye.GetInt() != 3 )
 		{
 			g_VRRenderer.m_bInTestRender = true;
-			RenderViewTest( view, hudView, nClearFlags, whatToDraw );
+			// RenderViewTest( view, hudView, nClearFlags, whatToDraw );
 			g_VRRenderer.m_bInTestRender = false;
 		}
-		// else
-		// {
-		// }
 
 		// SetupMain3DView( 0, view, view, nClearFlags, pRenderContext->GetRenderTarget() );
 		// CleanupMain3DView( view );
 
-		RenderViewEye( pRenderContext, view, nClearFlags, vr_one_rt_test.GetBool() ? g_VRRenderer.leftEye : g_VRRenderer.rightEye, VREye::Right );
-		RenderViewEye( pRenderContext, view, nClearFlags, g_VRRenderer.leftEye, VREye::Left );
+		RenderViewEye( pRenderContext, viewHack, nClearFlags, g_VRRenderer.leftEye, VREye::Left );
+		RenderViewEye( pRenderContext, viewHack, nClearFlags, vr_one_rt_test.GetBool() ? g_VRRenderer.leftEye : g_VRRenderer.rightEye, VREye::Right );
 
 		/*g_VRRenderer.m_bInTestRender = true;
 		RenderViewTest( view, hudView, nClearFlags, whatToDraw );
@@ -227,10 +254,16 @@ void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudVie
 
 		g_VRRenderer.PostRender();
 
+		if ( vr_waitgetposes_test.GetInt() == 3 )
+			g_VR.WaitGetPoses();
+
 		pRenderContext.SafeRelease();
 	}
 	else
 	{
+#if DXVK_VR
+		if ( g_pDXVK ) g_pDXVK->SetRenderTargetActive( false );
+#endif
 		BASE_RENDER_VIEW( view, hudView, nClearFlags, whatToDraw );
 	}
 }

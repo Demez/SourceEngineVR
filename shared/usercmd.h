@@ -77,7 +77,6 @@ public:
 #if VR
 		vr_active = false;
 		vr_viewRotation = 0.0f;
-		vr_originOffset.Init();
 		vr_trackers.Purge();
 #endif
 	}
@@ -123,7 +122,6 @@ public:
 #if VR
 		vr_active			= src.vr_active;
 		vr_viewRotation		= src.vr_viewRotation;
-		vr_originOffset		= src.vr_originOffset;
 		vr_trackers			= src.vr_trackers;
 
 		for (int i = 0; i < 5; i++)
@@ -173,7 +171,6 @@ public:
 #if VR
 		CRC32_ProcessBuffer( &crc, &vr_active, sizeof( vr_active ) );
 		CRC32_ProcessBuffer( &crc, &vr_viewRotation, sizeof( vr_viewRotation ) );
-		CRC32_ProcessBuffer( &crc, &vr_originOffset, sizeof( vr_originOffset ) );
 		CRC32_ProcessBuffer( &crc, &vr_trackers, sizeof( vr_trackers ) );
 		CRC32_ProcessBuffer( &crc, &vr_fingerCurlsL, sizeof( vr_fingerCurlsL ) );
 		CRC32_ProcessBuffer( &crc, &vr_fingerCurlsR, sizeof( vr_fingerCurlsR ) );
@@ -238,9 +235,8 @@ public:
 #endif
 
 #if VR
-	short vr_active;
+	bool vr_active;
 	float vr_viewRotation;
-	Vector vr_originOffset;
 	CUtlVector< CmdVRTracker > vr_trackers;
 	Vector2D vr_fingerCurlsL[5];
 	Vector2D vr_fingerCurlsR[5];

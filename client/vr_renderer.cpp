@@ -6,12 +6,18 @@
 #include "vr_player_shared.h"
 #include "vr_cl_player.h"
 
+#if DXVK_VR
+#include "vr_dxvk.h"
+extern IDXVK_VRSystem* g_pDXVK;
+#endif
+
 #include "debugoverlay_shared.h"
 #include "shaderapi/ishaderapi.h"
 #include "beamdraw.h"
 #include "tier1/fmtstr.h"
 
-#if ENGINE_NEW  // well this sucks
+// why is this not in the 2007 leak when it's in the orangebox sdk?
+#if !ENGINE_QUIVER
 #include "tier3/mdlutils.h"
 #endif
 
@@ -31,10 +37,11 @@ extern ConVar vr_one_rt_test;
 
 extern IShaderAPI* g_pShaderAPI;
 
-ConVar vr_nearz("vr_nearz", "5", FCVAR_CLIENTDLL);
-ConVar vr_always_draw_trackers("vr_always_draw_trackers", "1", FCVAR_CLIENTDLL);
-ConVar vr_dbg_point("vr_dbg_point", "0", FCVAR_CHEAT);
-ConVar vr_pointer_width("vr_pointer_width", "2.0", FCVAR_ARCHIVE);
+ConVar vr_nearz("vr_nearz", "3", FCVAR_CLIENTDLL);
+ConVar vr_always_draw_trackers("vr_always_draw_trackers", "0", FCVAR_CLIENTDLL);
+ConVar vr_draw_trackers("vr_draw_trackers", "1", FCVAR_CLIENTDLL);
+ConVar vr_dbg_point("vr_dbg_point", "1", FCVAR_CHEAT);
+ConVar vr_pointer_width("vr_pointer_width", "1.0", FCVAR_ARCHIVE);
 
 extern ConVar vr_pointer_lerp;
 
@@ -402,7 +409,7 @@ void DrawPointerQuadratic( const Vector &start, const Vector &control, const Vec
 
 		if ( !prevPos.IsZero() )
 		{
-			debugoverlay->AddLineOverlay( prevPos, curPos, color.x, color.y, color.z, false, 0.0f );
+			debugoverlay->AddLineOverlay( prevPos, curPos, color.x, color.y, color.z, true, 0.0f );
 		}
 
 		prevPos = curPos;
@@ -441,12 +448,21 @@ static void DrawBeamQuadraticNew( IMaterial* material, const Vector &start, cons
 		if ( i == 0 || i == subdivisions )
 		{
 			// HACK: fade out the ends a bit
+#if ENGINE_NEW
 			seg.m_color.r = seg.m_color.g = seg.m_color.b = 0;
 			seg.m_color.a = 255;
+#else
+			seg.m_vColor.Init();
+			seg.m_flAlpha = 255;
+#endif
 		}
 		else
 		{
+#if ENGINE_NEW
 			seg.SetColor( color, 1.0f );
+#else
+			seg.m_vColor = color;
+#endif
 		}
 		beamDraw.NextSeg( &seg );
 	}
@@ -615,12 +631,10 @@ void CVRRenderer::RenderShared()
 	// DrawScreen();
 
 	// draw trackers
-	if ( ShouldDrawTrackers() )
+	/*for ( int i = 0; i < m_trackers.Count(); i++ )
 	{
-		for ( int i = 0; i < m_trackers.Count(); i++ )
-		{
+		if ( ShouldDrawTracker( m_trackers[i]->m_tracker->type ) )
 			m_trackers[i]->Draw();
-		}
 	}
 
 	// DEMEZ TODO: do this for all players somehow?
@@ -634,7 +648,7 @@ void CVRRenderer::RenderShared()
 				DrawControllerPointer( (CVRController*)pPlayer->m_VRTrackers[i] );
 			}
 		}
-	}
+	}*/
 }
 
 
@@ -711,9 +725,17 @@ void CVRRenderer::PostRender()
 }
 
 
-bool CVRRenderer::ShouldDrawTrackers()
+bool CVRRenderer::ShouldDrawTracker( EVRTracker tracker )
 {
-	return ( !g_VR.m_inMap || vr_always_draw_trackers.GetBool() );
+	if ( tracker == EVRTracker::HMD )
+		return false;
+
+	if ( vr_always_draw_trackers.GetBool() )
+		return true;
+
+	// if we disable vr in the middle of updating a tracker, OVR could be NULL
+	// and then a crash would occur here, not sure if this can happen anywhere else yet
+	return vr_draw_trackers.GetBool() && (g_pOVR && !g_pOVR->IsSteamVRDrawingControllers());
 }
 
 
@@ -723,10 +745,10 @@ ConVar vr_ipd_test("vr_ipd_test", "1.0");
 
 void CVRRenderer::PrepareEyeViewSetup( CViewSetup &eyeView, VREye eye, const Vector& origin, const QAngle& angles )
 {
+	VRViewParams viewParams = g_VR.GetViewParams();
+
 	if ( g_VR.active )
 	{
-		VRViewParams viewParams = g_VR.GetViewParams();
-
 		VMatrix matOffset = g_VR.GetMidEyeFromEye( eye );
 
 		// Move eyes to IPD positions.
@@ -750,7 +772,6 @@ void CVRRenderer::PrepareEyeViewSetup( CViewSetup &eyeView, VREye eye, const Vec
 	}
 	else if ( vr_dbg_rt_test.GetBool() )
 	{
-		VRViewParams viewParams = g_VR.GetViewParams();
 		eyeView.width = viewParams.width;
 		eyeView.height = viewParams.height;
 		eyeView.m_flAspectRatio = (float)eyeView.width / (float)eyeView.height;
@@ -807,6 +828,10 @@ void CVRRenderer::InitEyeRenderTargets()
 	lastWidth = viewParams.width;
 	lastHeight = viewParams.height;
 
+#if DXVK_VR
+	if ( g_pDXVK ) g_pDXVK->SetRenderTargetSize( lastWidth, lastHeight );
+#endif
+
 	// needed if alien swarm or csgo
 #if ENGINE_NEW
 	// i don't care
@@ -817,21 +842,29 @@ void CVRRenderer::InitEyeRenderTargets()
 
 	ImageFormat format = materials->GetBackBufferFormat();
 
+#if DXVK_VR
+	if ( g_pDXVK ) g_pDXVK->NextCreateTextureIsEye( vr::Eye_Left );
+#endif
+
 	leftEye = materials->CreateNamedRenderTargetTextureEx2(
 	    "_rt_vr_left",
 		lastWidth, lastHeight,
-		RT_SIZE_LITERAL, // RT_SIZE_NO_CHANGE,
+		RT_SIZE_NO_CHANGE,
 		format,// IMAGE_FORMAT_RGBA8888,
 		MATERIAL_RT_DEPTH_SHARED, // MATERIAL_RT_DEPTH_SEPARATE,
 	    TEXTUREFLAGS_RENDERTARGET /*| TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP*/,
 	    0 );
 
+#if DXVK_VR
+	if ( g_pDXVK ) g_pDXVK->NextCreateTextureIsEye( vr::Eye_Right );
+#endif
+
 	rightEye = materials->CreateNamedRenderTargetTextureEx2(
 	    "_rt_vr_right",
 		lastWidth, lastHeight,
-		RT_SIZE_LITERAL, // RT_SIZE_NO_CHANGE,
+		RT_SIZE_NO_CHANGE,
 		// IMAGE_FORMAT_RGBA8888, // materials->GetBackBufferFormat(),
-		format, // materials->GetBackBufferFormat(),
+		format,
 		MATERIAL_RT_DEPTH_SHARED, // MATERIAL_RT_DEPTH_NONE,
 	    TEXTUREFLAGS_RENDERTARGET /*| TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP*/,
 	    0 );
@@ -839,6 +872,7 @@ void CVRRenderer::InitEyeRenderTargets()
 	materials->EndRenderTargetAllocation();
 
 #if ENGINE_NEW
+	// VR TODO: why the fuck does this crash on dxvk for when changing resolution
 	materials->FinishRenderTargetAllocation();
 #endif
 
@@ -846,13 +880,14 @@ void CVRRenderer::InitEyeRenderTargets()
 
 	mat_queue_mode.SetValue( ogMode );
 
+#if !DXVK_VR
 #if ENGINE_QUIVER || ENGINE_CSGO 
 	// uint dxlevel, recommended_dxlevel;
 	// materials->GetDXLevelDefaults( dxlevel, recommended_dxlevel );
 
-	if ( !g_VR.IsDX11() )
+	if ( !g_VR.IsDX11() && !vr_dbg_rt_test.GetBool() )
 	{
-		if ( g_VR.NeedD3DInit() )
+		if ( g_VR.NeedD3DInit() ) 
 		{
 			g_VR.InitDX9Device( materials->VR_GetDevice() );
 		}
@@ -872,6 +907,7 @@ void CVRRenderer::InitEyeRenderTargets()
 		g_VR.DX9EXToDX11( g_pShaderAPI->VR_GetSubmitInfo( leftEye ), g_pShaderAPI->VR_GetSubmitInfo( rightEye ) );
 	}
 	
+#endif
 #endif
 
 	InitMaterials();

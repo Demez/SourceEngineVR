@@ -6,6 +6,7 @@
 
 #include <openvr.h>
 #include "vr_util.h"
+#include "vr_dxvk.h"
 #include "igamesystem.h"
 
 // #include <materialsystem/imaterialsystem.h>
@@ -30,6 +31,10 @@ public:
 	QAngle angvel;
 	bool valid;
 	EVRTracker type;
+
+	int actionIndex;
+	uint32_t deviceIndex;
+
 	VRDeviceType* device = nullptr;
 
 	// inline const char*         GetModelName() { return device ? device->GetTrackerModelName(type) : ""; }
@@ -71,6 +76,7 @@ typedef struct VRBaseAction
 {
 	const char* name = NULL;
 	VRAction type = VRAction::None;
+	vr::VRActionHandle_t handle = 0;
 } VRBaseAction;
 
 
@@ -160,15 +166,8 @@ public:
     public float hmd_DisplayFrequency { get { return GetFloatProperty(ETrackedDeviceProperty.Prop_DisplayFrequency_Float); } }
 	*/
 
-	const char*                 GetTrackingPropString( vr::ETrackedDeviceProperty prop, uint deviceId = vr::k_unTrackedDeviceIndex_Hmd );
-
-	const char*                 GetHeadsetTrackingSystemName();
-	const char*                 GetHeadsetModelNumber();
-	const char*                 GetHeadsetSerialNumber();
-	const char*                 GetHeadsetType();
-
-	float                       GetHeadsetSecondsFromVsyncToPhotons();
-	float                       GetHeadsetDisplayFrequency();
+	char*                       GetTrackingPropString( vr::ETrackedDeviceProperty prop, uint deviceId = vr::k_unTrackedDeviceIndex_Hmd );
+	void                        GetTrackingPropString( char* value, int size, vr::ETrackedDeviceProperty prop, uint deviceId = vr::k_unTrackedDeviceIndex_Hmd );
 
 	// ========================================
 	// OpenVR Handling Stuff
@@ -177,23 +176,24 @@ public:
 	bool                        Enable();
 	bool                        Disable();
 
-	void                        StartThread();
-	void                        StopThread();
-
-	void                        UpdateTrackers();
-	void                        UpdateActions();
-
 	VRHostTracker*              GetTracker( EVRTracker tracker );
 	VRHostTracker*              GetTrackerByName( const char* name );
 	VRBaseAction*               GetActionByName( const char* name );
+	VRBaseAction*               GetActionByHandle( vr::VRActionHandle_t handle );
 
-	void                        UpdateViewParams();
 	VRViewParams                GetViewParams();
 	void                        GetFOVOffset( VREye eye, float &aspectRatio, float &hFov );
 
 	double                      GetScale();
 	void                        SetScale( double newScale );
 	void                        SetSeatedMode( bool seated );
+
+	// delay and duration is in seconds, amplitude is 0.0 to 1.0, no clue how freq works
+	void                        TriggerHapticFeedback( EVRTracker tracker, float amplitude = 0.75f, float duration = 1.0f, float freq = 1.0f, float delay = 0.0f );
+
+	// ========================================
+	// Lower Level OpenVR Handling Stuff
+	// ========================================
 
 	bool                        IsDX11();
 	bool                        NeedD3DInit();
@@ -204,6 +204,17 @@ public:
 	void                        Submit( ITexture* leftEye, ITexture* rightEye );
 	void                        WaitGetPoses();
 
+// these are only private because they really should not be accessed outside of the VRSystem class
+private:
+	void                        StartThread();
+	void                        StopThread();
+
+	void                        UpdateTrackers();
+	void                        UpdateActions();
+
+	void                        UpdateViewParams();
+	void                        UpdateDevices();
+
 public:
 	bool active;
 	VRViewParams m_currentViewParams;
@@ -213,6 +224,7 @@ public:
 	// CUtlVector< VRBaseAction* > previousActions;
 
 	// CUtlVector< VRDeviceType* > m_deviceTypes;
+	CUtlMap< uint, vr::ETrackedDeviceClass > m_deviceClasses;
 
 	bool m_seatedMode;
 	double m_scale;
