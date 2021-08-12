@@ -338,7 +338,11 @@ const QAngle &CVRBasePlayerShared::EyeAngles()
 #endif
 		)
 	{
-		return m_vrViewAngles;
+		CVRTracker* headset = GetHeadset();
+		if ( headset == NULL )
+			return BaseClass::EyeAngles();
+
+		return headset->GetAbsAngles();
 	}
 	else
 	{
