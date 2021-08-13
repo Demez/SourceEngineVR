@@ -73,6 +73,8 @@ public:
 	bool ShouldDrawTracker( EVRTracker tracker );
 	CVRTrackerRender* GetTrackerRender( VRHostTracker* tracker );
 
+	CachedRenderInfo_t* CreateRenderInfo();
+
 	ITexture *leftEye;
 	ITexture *rightEye;
 
@@ -89,7 +91,11 @@ public:
 	bool m_bInMap;
 	bool m_bUpdateRT;
 
+	int m_renderViewCount;
+
 	Vector m_viewOrigin;
+
+	CUtlVector< CachedRenderInfo_t* > m_renderInfos;
 
 	CUtlVector< CVRTrackerRender* > m_trackers;
 };
@@ -99,6 +105,8 @@ extern CVRRenderThread* g_VRRenderThread;
 extern CVRRenderer g_VRRenderer;
 extern CVRRenderer* VRRenderer();
 
+extern bool DrawingVREyes();
+extern bool FirstEyeRender();
 
 #if ENGINE_CSGO
 #define PUSH_VIEW( pRenderContext, eyeView, nFlags, eyeTex, frustum ) render->Push3DView( pRenderContext, eyeView, nFlags, eyeTex, frustum )

@@ -35,6 +35,11 @@ public:
 	virtual void RenderViewEye( CMatRenderContextPtr &pRenderContext, const CViewSetup &view, int nClearFlags, ITexture* eyeTex, VREye eye );
 	virtual void RenderViewDesktop( const CViewSetup &view, const CViewSetup &hudView, int nClearFlags, int whatToDraw );
 
+	// different per engine base
+	virtual void RenderViewEyeBase( const CViewSetup &view, const CViewSetup &hudViewSetup, int nClearFlags, int whatToDraw, VREye eye );
+	virtual void ViewDrawSceneEye( bool bDrew3dSkybox, SkyboxVisibility_t nSkyboxVisible, const CViewSetup &view, 
+								  int nClearFlags, view_id_t viewID, int baseDrawFlags = 0, ViewCustomVisibility_t *pCustomVisibility = NULL );
+
 	// will extend this into it's own class, so you can pickup and move the camera around
 	// might need to have that be an entity to make it easy though
 	// unless i create a custom vr item pickup class for local use only

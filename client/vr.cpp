@@ -44,7 +44,7 @@ ConVar vr_renderthread("vr_renderthread", "0", FCVAR_ARCHIVE, "use a separate th
 
 ConVar vr_clamp_res("vr_clamp_res", "0", FCVAR_CLIENTDLL, "clamp the resolution to the screen size until the render clamping issue is figured out");
 ConVar vr_scale_override("vr_scale_override", "42.5");  // anything lower than 0.25 doesn't look right in the headset
-ConVar vr_dbg_rt_res("vr_dbg_rt_res", "2048", FCVAR_CLIENTDLL);
+ConVar vr_dbg_rt_res_scale("vr_dbg_rt_res_scale", "2", FCVAR_CLIENTDLL);
 ConVar vr_eye_height("vr_eye_h", "0", FCVAR_CLIENTDLL, "Override the render target height, 0 to disable");
 ConVar vr_eye_width("vr_eye_w", "0", FCVAR_CLIENTDLL, "Override the render target width, 0 to disable");
 
@@ -942,8 +942,14 @@ void VRSystem::UpdateViewParams()
     }
     else
     {
-        width = vr_dbg_rt_res.GetInt();
-        height = vr_dbg_rt_res.GetInt();
+        int scrWidth, scrHeight;
+        materials->GetBackBufferDimensions( scrWidth, scrHeight );
+
+        width = ((float)scrWidth / 2.0f) * vr_dbg_rt_res_scale.GetFloat();
+        height = (float)scrHeight * vr_dbg_rt_res_scale.GetFloat();
+
+        // width = vr_dbg_rt_res.GetInt();
+        // height = vr_dbg_rt_res.GetInt();
     }
 
     // not needed anymore

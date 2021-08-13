@@ -72,6 +72,8 @@ files
 		// "$VR_CL_DIR/vr_minhook.cpp"     [$USE_MINHOOK]
 		// "$VR_CL_DIR/vr_minhook.h"       [$USE_MINHOOK]
 		
+		"$VR_CL_DIR/vr_viewrender_asw.cpp" [$ENGINE_ASW]
+		
 		"$VR_CL_DIR/vr.cpp"
 		"$VR_CL_DIR/vr.h"
 		"$VR_CL_DIR/vr_internal.cpp"

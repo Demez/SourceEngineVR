@@ -236,7 +236,7 @@ void VRSystemInternal::InitDX9Device( void* deviceData )
 
 void VRSystemInternal::WaitGetPoses()
 {
-    if ( !g_VR.active )
+    if ( !g_VR.active || !vr::VRCompositor() || !g_pOVRInput )
         return;
 
     vr::EVRCompositorError error = vr::VRCompositor()->WaitGetPoses( poses, vr::k_unMaxTrackedDeviceCount, NULL, 0 );

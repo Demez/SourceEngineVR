@@ -31,9 +31,11 @@ CVRRenderThread* g_VRRenderThread;
 extern ConVar vr_desktop_eye;
 extern ConVar vr_fov_override;
 extern ConVar vr_dbg_rt_test;
-extern ConVar vr_dbg_rt_scale;
 extern ConVar vr_dbg_rt;
 extern ConVar vr_one_rt_test;
+extern ConVar vr_no_renderable_caching;
+
+ConVar vr_dbg_rt_scale("vr_dbg_rt_scale", "0.5", FCVAR_CLIENTDLL);
 
 extern IShaderAPI* g_pShaderAPI;
 
@@ -702,6 +704,8 @@ void CVRRenderer::PreRender()
 			m_trackers.AddToTail( trackerRender );
 		}
 	}
+
+	m_renderViewCount = 0;
 }
 
 
@@ -994,7 +998,7 @@ void CVRRenderer::DrawCroppedView()
 
 		// hack, this cropping code probably isn't perfect if i need this
 		if ( vr_dbg_rt_test.GetBool() )
-			heightOffset /= scrAspect;
+			heightOffset /= (scrAspect/1.5);
 
 		// now crop this to the entire screen
 		pRenderContext->DrawScreenSpaceRectangle(
@@ -1037,5 +1041,42 @@ void CVRRenderer::DrawDebugEyeRenderTarget( IMaterial* eyeMat, int pos )
 	);
 }
 
+
+CachedRenderInfo_t* CVRRenderer::CreateRenderInfo()
+{
+	static int i = -1;
+
+	if ( FirstEyeRender() || vr_no_renderable_caching.GetBool() )
+	{
+		i = -1;
+
+		// doesn't exist, create it
+		CachedRenderInfo_t* renderInfo = new CachedRenderInfo_t;
+		renderInfo->setupInfo = new SetupRenderInfo_t;
+
+		m_renderInfos.AddToTail( renderInfo );
+		return renderInfo;
+	}
+
+	i++;
+	return m_renderInfos[i];
+}
+
+
+bool DrawingVREyes()
+{
+	return vr_dbg_rt_test.GetBool() || g_VR.active;
+}
+
+// only issue is that the desktop view could be drawing extra stuff
+// but is it faster to use the same render list for the eyes on the desktop and draw the extra stuff
+// or is it faster to recalculate the render list for the desktop and draw less stuff?
+bool FirstEyeRender()
+{
+	if ( !DrawingVREyes() || vr_no_renderable_caching.GetBool() )
+		return true;
+
+	return g_VRRenderer.m_renderViewCount == 0;
+}
 
 

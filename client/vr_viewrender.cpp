@@ -22,10 +22,11 @@ extern IDXVK_VRSystem* g_pDXVK;
 ConVar vr_desktop_eye("vr_desktop_eye", "1", FCVAR_ARCHIVE, "0 - no screen view, 1 - crop left eye, 2 - the right eye, 3 - rerender the desktop view", true, 0.0f, true, 3.0f);
 ConVar vr_test_cam("vr_test_cam", "1", FCVAR_ARCHIVE);
 ConVar vr_autoupdate_rt("vr_autoupdate_rt", "1", FCVAR_CLIENTDLL);
+ConVar vr_no_renderable_caching("vr_no_renderable_caching", "0", FCVAR_CLIENTDLL);
 
 ConVar vr_dbg_rt("vr_dbg_rt", "0", FCVAR_CLIENTDLL);
 ConVar vr_dbg_rt_test("vr_dbg_rt_test", "0", FCVAR_CLIENTDLL);
-ConVar vr_dbg_rt_scale("vr_dbg_rt_scale", "0.5", FCVAR_CLIENTDLL);
+// ConVar vr_dbg_rt_scale("vr_dbg_rt_scale", "0.5", FCVAR_CLIENTDLL);
 ConVar vr_one_rt_test("vr_one_rt_test", "0", FCVAR_CLIENTDLL);
 
 extern ConVar vr_waitgetposes_test;
@@ -160,8 +161,18 @@ void CVRViewRender::RenderViewEye( CMatRenderContextPtr &pRenderContext, const C
 
 	PUSH_VIEW( pRenderContext, eyeView, VIEW_CLEAR_COLOR | VIEW_CLEAR_DEPTH, eyeTex, GetFrustum() );
 
-	BASE_RENDER_VIEW( eyeView, eyeView, nClearFlags, vr_dbg_rt_test.GetBool() ? RENDERVIEW_DRAWVIEWMODEL : RENDERVIEW_UNSPECIFIED );
-	// BASE_RENDER_VIEW( eyeView, eyeView, nClearFlags, RENDERVIEW_DRAWVIEWMODEL );
+	int flags = RENDERVIEW_UNSPECIFIED;
+
+	if ( vr_dbg_rt_test.GetBool() )
+		flags |= RENDERVIEW_DRAWVIEWMODEL;
+
+	// use the monitor view from the first renderview call
+	if ( g_VRRenderer.m_renderViewCount > 0 )
+		flags |= RENDERVIEW_SUPPRESSMONITORRENDERING;
+
+	// BASE_RENDER_VIEW( eyeView, eyeView, nClearFlags, flags );
+	RenderViewEyeBase( eyeView, eyeView, nClearFlags, flags, eye );
+
 	g_VRRenderer.RenderShared();
 
 	g_VRRenderer.PostEyeRender( eye );
@@ -172,6 +183,10 @@ void CVRViewRender::RenderViewEye( CMatRenderContextPtr &pRenderContext, const C
 	// 	g_VR.Submit( eyeTex, eye );
 
 	g_VRRenderer.m_bInEyeRender = false;
+	g_VRRenderer.m_renderViewCount++;
+
+	if ( vr_no_renderable_caching.GetBool() )
+		g_VRRenderer.m_renderInfos.PurgeAndDeleteElements();
 }
 
 
@@ -186,10 +201,11 @@ void CVRViewRender::RenderViewDesktop( const CViewSetup &view, const CViewSetup 
 
 		BASE_RENDER_VIEW( desktopView, desktopView, nClearFlags, whatToDraw );
 		g_VRRenderer.RenderShared();
+
+		g_VRRenderer.m_renderViewCount++;
 	}
 }
 
-// ConVar vr_viewhack("vr_viewhack", "1");
 
 void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudView, int nClearFlags, int whatToDraw )
 {
@@ -208,49 +224,10 @@ void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudVie
 
 		g_VRRenderer.PreRender();
 
-		CViewSetup viewHack(view);
-		CViewSetup hudViewHack(hudView);
+		RenderViewEye( pRenderContext, view, nClearFlags, g_VRRenderer.leftEye, VREye::Left );
+		RenderViewEye( pRenderContext, view, nClearFlags, vr_one_rt_test.GetBool() ? g_VRRenderer.leftEye : g_VRRenderer.rightEye, VREye::Right );
 
-		// VR HACK: because of having the vr tracker updates in ClientThink, it's delayed slightly
-		// until i can find a better place, we're gonna grab the view angles directly from the vr system, since that's the worst part
-		// or im completely wrong about this actually lol
-		/*VRHostTracker* hmd = g_VR.GetHeadset();
-		C_VRBasePlayer* pl = GetLocalVRPlayer();
-		if ( hmd && pl && vr_viewhack.GetBool() )
-		{
-			QAngle newAng = hmd->ang;
-			newAng.y += pl->localVRViewOffset;
-
-			viewHack.angles = hmd->ang;
-			hudViewHack.angles = hmd->ang;
-
-			// viewHack.angles = pl->EyeAngles();
-			// hudViewHack.angles = pl->EyeAngles();
-		}*/
-
-		// draw main screen
-		RenderViewDesktop( viewHack, hudViewHack, nClearFlags, whatToDraw );
-		
-		if ( vr_desktop_eye.GetInt() != 3 )
-		{
-			g_VRRenderer.m_bInTestRender = true;
-			// RenderViewTest( view, hudView, nClearFlags, whatToDraw );
-			g_VRRenderer.m_bInTestRender = false;
-		}
-
-		// SetupMain3DView( 0, view, view, nClearFlags, pRenderContext->GetRenderTarget() );
-		// CleanupMain3DView( view );
-
-		RenderViewEye( pRenderContext, viewHack, nClearFlags, g_VRRenderer.leftEye, VREye::Left );
-		RenderViewEye( pRenderContext, viewHack, nClearFlags, vr_one_rt_test.GetBool() ? g_VRRenderer.leftEye : g_VRRenderer.rightEye, VREye::Right );
-
-		/*g_VRRenderer.m_bInTestRender = true;
-		RenderViewTest( view, hudView, nClearFlags, whatToDraw );
-		g_VRRenderer.m_bInTestRender = false;*/
-
-
-		// broken for some reason
-		// RenderViewDesktop( view, hudView, nClearFlags, whatToDraw );
+		RenderViewDesktop( view, hudView, nClearFlags, whatToDraw );
 
 		g_VRRenderer.PostRender();
 
@@ -266,6 +243,8 @@ void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudVie
 #endif
 		BASE_RENDER_VIEW( view, hudView, nClearFlags, whatToDraw );
 	}
+
+	g_VRRenderer.m_renderInfos.PurgeAndDeleteElements();
 }
 
 
