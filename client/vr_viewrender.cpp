@@ -9,6 +9,7 @@
 #include "materialsystem/imaterialsystem.h"
 #include "materialsystem/imaterialvar.h"
 #include "materialsystem/itexture.h"
+#include "tier1/fmtstr.h"
 
 #if DXVK_VR
 #include "vr_dxvk.h"
@@ -22,7 +23,10 @@ extern IDXVK_VRSystem* g_pDXVK;
 ConVar vr_desktop_eye("vr_desktop_eye", "1", FCVAR_ARCHIVE, "0 - no screen view, 1 - crop left eye, 2 - the right eye, 3 - rerender the desktop view", true, 0.0f, true, 3.0f);
 ConVar vr_test_cam("vr_test_cam", "1", FCVAR_ARCHIVE);
 ConVar vr_autoupdate_rt("vr_autoupdate_rt", "1", FCVAR_CLIENTDLL);
-ConVar vr_no_renderable_caching("vr_no_renderable_caching", "0", FCVAR_CLIENTDLL);
+
+// enabled until i look into and figure out what causes this to break in release
+ConVar vr_no_renderable_caching("vr_no_renderable_caching", "1", FCVAR_CLIENTDLL);
+ConVar vr_no_worldlist_caching("vr_no_worldlist_caching", "0", FCVAR_CLIENTDLL);
 
 ConVar vr_dbg_rt("vr_dbg_rt", "0", FCVAR_CLIENTDLL);
 ConVar vr_dbg_rt_test("vr_dbg_rt_test", "0", FCVAR_CLIENTDLL);
@@ -30,6 +34,7 @@ ConVar vr_dbg_rt_test("vr_dbg_rt_test", "0", FCVAR_CLIENTDLL);
 ConVar vr_one_rt_test("vr_one_rt_test", "0", FCVAR_CLIENTDLL);
 
 extern ConVar vr_waitgetposes_test;
+extern ConVar vr_spew_timings;
 
 
 static CVRViewRender g_ViewRender;
@@ -84,32 +89,7 @@ vrect_t* GetEyeVRect()
 
 void CVRViewRender::Render( vrect_t *rect )
 {
-	// VPROF_BUDGET( "CVRViewRender::Render", "CVRViewRender::Render" );
-
-	// see view.cpp in source 2013
-
-	// dumb
-	/*if ( g_VR.active )
-	{
-		vrect_t* eyeRect = GetEyeVRect();
-		// m_bIsInEyeRender = true;
-		BaseViewRender::Render( eyeRect );
-		// m_bIsInEyeRender = false;
-	}
-	else
-	{*/
-
-	// g_VR.WaitGetPoses();
-
 	BaseViewRender::Render( rect );
-
-	// TODO: copy stuff here for the entire screen next frame?
-	// or figure out where the ui stuff is drawn and override that, then submit?
-
-	// g_VRRenderer.PostRender();
-
-	// }
-
 }
 
 
@@ -200,10 +180,19 @@ void CVRViewRender::RenderViewDesktop( const CViewSetup &view, const CViewSetup 
 			SetupCameraView( desktopView );
 
 		BASE_RENDER_VIEW( desktopView, desktopView, nClearFlags, whatToDraw );
+		// RenderViewEyeBase( desktopView, desktopView, nClearFlags, nClearFlags, VREye::Left );
 		g_VRRenderer.RenderShared();
 
 		g_VRRenderer.m_renderViewCount++;
 	}
+	else if ( !g_VR.active && !vr_dbg_rt_test.GetBool() )
+	{
+		BASE_RENDER_VIEW( view, hudView, nClearFlags, whatToDraw );
+		// RenderViewEyeBase( view, hudView, nClearFlags, nClearFlags, VREye::Left );
+	}
+
+	g_VRRenderer.m_renderInfos.PurgeAndDeleteElements();
+	g_WorldListCache.Flush();
 }
 
 
@@ -214,9 +203,8 @@ void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudVie
 #if DXVK_VR
 		if ( g_pDXVK ) g_pDXVK->SetRenderTargetActive( true );
 #endif
-		// should be used here?
-		if ( vr_waitgetposes_test.GetInt() == 1 )
-			g_VR.WaitGetPoses();
+		if ( vr_spew_timings.GetBool() )
+			DevMsg("[VR] CALLED RENDERVIEW - HMD ANG: %s\n", VecToString(view.angles));
 
 		g_VRRenderer.UpdateEyeRenderTargets();
 
@@ -227,24 +215,34 @@ void CVRViewRender::RenderView( const CViewSetup &view, const CViewSetup &hudVie
 		RenderViewEye( pRenderContext, view, nClearFlags, g_VRRenderer.leftEye, VREye::Left );
 		RenderViewEye( pRenderContext, view, nClearFlags, vr_one_rt_test.GetBool() ? g_VRRenderer.leftEye : g_VRRenderer.rightEye, VREye::Right );
 
-		RenderViewDesktop( view, hudView, nClearFlags, whatToDraw );
+		// if ( !vr_no_worldlist_caching.GetBool() )
+		{
+			g_VRRenderer.m_renderInfos.PurgeAndDeleteElements();
+			g_WorldListCache.Flush();
+		}
+
+		// RenderViewDesktop( view, hudView, nClearFlags, whatToDraw );
 
 		g_VRRenderer.PostRender();
 
-		if ( vr_waitgetposes_test.GetInt() == 3 )
-			g_VR.WaitGetPoses();
-
 		pRenderContext.SafeRelease();
+
+		// end of frame
+		if ( vr_spew_timings.GetBool() )
+		{
+			DevMsg("---------------------------------------------------\n");
+		}
 	}
 	else
 	{
 #if DXVK_VR
 		if ( g_pDXVK ) g_pDXVK->SetRenderTargetActive( false );
 #endif
-		BASE_RENDER_VIEW( view, hudView, nClearFlags, whatToDraw );
+		g_VRRenderer.PreRender();
+		RenderViewDesktop( view, hudView, nClearFlags, whatToDraw );
+		// BASE_RENDER_VIEW( view, hudView, nClearFlags, whatToDraw );
 	}
 
-	g_VRRenderer.m_renderInfos.PurgeAndDeleteElements();
 }
 
 

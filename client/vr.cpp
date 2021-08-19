@@ -54,6 +54,7 @@ ConVar vr_waitgetposes_test("vr_waitgetposes_test", "0", FCVAR_CLIENTDLL, "testi
 
 extern ConVar vr_dbg_rt_test;
 extern ConVar vr_scale;
+extern ConVar vr_spew_timings;
 
 #if ENGINE_NEW
 extern ConVar mat_postprocess_enable;
@@ -415,9 +416,13 @@ void VRSystem::Update( float frametime )
         return;
     }
 
-    // DEMEZ TODO: should probably be moved to viewrender?
-    if ( vr_waitgetposes_test.GetInt() == 0 )
-        WaitGetPoses();
+#if DXVK_VR
+    // must update this here when not in the world
+    if ( !m_inMap )
+    {
+        g_pDXVK->StartFrame();
+    }
+#endif
 
     if ( m_scale <= 0.0f )
         m_scale = DEFAULT_VR_SCALE;
@@ -427,16 +432,16 @@ void VRSystem::Update( float frametime )
 }
 
 
-// might be a good idea to rename this function, probably OpenVRUpdate, idk
-void VRSystem::WaitGetPoses()
+void VRSystem::UpdateInput()
 {
+    if ( vr_spew_timings.GetBool() )
+    {
+        DevMsg("[VR] CALLED WAITGETPOSES UPDATE\n");
+    }
+
 	UpdateViewParams();
 
-#if !DXVK_VR
-    g_VRInt.WaitGetPoses();
-#endif
-
-    UpdateDevices();
+    // UpdateDevices();
 	UpdateTrackers();
 	UpdateActions();
 }

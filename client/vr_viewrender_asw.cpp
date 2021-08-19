@@ -362,7 +362,7 @@ void CVRViewRender::RenderViewEyeBase( const CViewSetup &view, const CViewSetup 
 
 	pRenderContext.SafeRelease();
 
-	g_WorldListCache.Flush();
+	// g_WorldListCache.Flush();
 
 	m_CurrentView = view;
 }

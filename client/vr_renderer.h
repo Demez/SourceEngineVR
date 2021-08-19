@@ -91,7 +91,8 @@ public:
 	bool m_bInMap;
 	bool m_bUpdateRT;
 
-	int m_renderViewCount;
+	int m_totalRenderViews;  // all render view calls we will draw
+	int m_renderViewCount;   // how many have been called
 
 	Vector m_viewOrigin;
 

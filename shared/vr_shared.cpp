@@ -4,6 +4,10 @@
 #include "filesystem.h"
 
 
+// idk where to put this
+ConVar vr_spew_timings("vr_spew_timings", "0", FCVAR_REPLICATED, "spew vr timings");
+
+
 VRSystemShared g_VRShared;
 
 

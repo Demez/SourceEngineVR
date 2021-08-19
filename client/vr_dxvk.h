@@ -29,8 +29,9 @@ public:
 
 	virtual void SetRenderTargetSize( uint32_t width, uint32_t height ) = 0;
 	virtual void SetRenderTargetActive( bool enabled ) = 0;
-
 	virtual void NextCreateTextureIsEye( vr::EVREye eye ) = 0;
+
+	virtual void StartFrame() = 0;
 };
 
 #define DXVK_VR_API __declspec(dllexport)

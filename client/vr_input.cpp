@@ -14,6 +14,11 @@
 #include "vr.h"
 #include "vr_input.h"
 
+#if DXVK_VR
+#include "vr_dxvk.h"
+extern IDXVK_VRSystem* g_pDXVK;
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -28,6 +33,8 @@ ConVar vr_side_speed("vr_side_speed", "450", FCVAR_CLIENTDLL);
 ConVar vr_back_speed("vr_back_speed", "450", FCVAR_CLIENTDLL);
 ConVar vr_turn_speed("vr_turn_speed", "150", FCVAR_ARCHIVE);
 // ConVar vr_turn_snap("vr_turn_snap", "0", FCVAR_CLIENTDLL);
+
+extern ConVar vr_spew_timings;
 
 /*
 ConVar cl_sidespeed( "cl_sidespeed", "450", FCVAR_CHEAT );
@@ -211,6 +218,26 @@ static float ResponseCurve( int curve, float x, int axis, float sensitivity )
 CVRInput* GetVRInput()
 {
 	return (CVRInput*)input;
+}
+
+
+void CVRInput::CreateMove( int sequence_number, float input_sample_frametime, bool active )
+{
+#if DXVK_VR
+	g_pDXVK->StartFrame();
+#endif
+
+	BaseClass::CreateMove( sequence_number, input_sample_frametime, active );
+}
+
+
+void CVRInput::ExtraMouseSample( float frametime, bool active )
+{
+#if DXVK_VR
+	g_pDXVK->StartFrame();
+#endif
+
+	BaseClass::ExtraMouseSample( frametime, active );
 }
 
 
@@ -430,8 +457,24 @@ void CVRInput::VRHeadsetAngles( float frametime )
 	if ( !g_VR.active && !vr_mouse_look.GetBool() )
 		return;
 
+	if ( vr_spew_timings.GetBool() )
+		DevMsg( "[VR] CALLED VRINPUT ADJUSTANGLES\n" );
+
+	QAngle viewAngles;
+	engine->GetViewAngles( viewAngles );
+	
+	VRHostTracker* headset = g_VR.GetHeadset();
 	C_VRBasePlayer *pPlayer = (C_VRBasePlayer*)C_BasePlayer::GetLocalPlayer();
-	QAngle viewAngles = pPlayer->EyeAngles();
+
+	if ( headset )
+	{
+		viewAngles = headset->ang + pPlayer->GetViewRotationAng();
+	}
+	else
+	{
+		viewAngles = pPlayer->m_vrViewAngles;
+	}
+
 	engine->SetViewAngles( viewAngles );
 }
 

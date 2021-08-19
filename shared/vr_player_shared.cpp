@@ -19,6 +19,7 @@ extern CMoveData* g_pMoveData;
 
 
 extern ConVar vr_lefthand;
+extern ConVar vr_spew_timings;
 
 
 IMPLEMENT_NETWORKCLASS( CVRBasePlayerShared, DT_VRBasePlayerShared )
@@ -338,11 +339,20 @@ const QAngle &CVRBasePlayerShared::EyeAngles()
 #endif
 		)
 	{
+#ifdef CLIENT_DLL
+		return m_vrViewAngles;
+#else
 		CVRTracker* headset = GetHeadset();
 		if ( headset == NULL )
 			return BaseClass::EyeAngles();
 
+		if ( vr_spew_timings.GetBool() )
+		{
+			DevMsg( "[VR] %s CALLED EyeAngles() - %s\n", IsServer() ? "SV" : "CL", VecToString(headset->GetAbsAngles()) );
+		}
+
 		return headset->GetAbsAngles();
+#endif
 	}
 	else
 	{

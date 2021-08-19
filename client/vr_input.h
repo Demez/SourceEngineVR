@@ -26,6 +26,9 @@ public:
 	virtual void CalcButtonBitsBool( const char* action, int in_button );
 	virtual void CalcButtonBitsToggleCmd( const char* action, bool& bEnabled, const char* cmd );
 
+	virtual void CreateMove ( int sequence_number, float input_sample_frametime, bool active );
+	virtual void ExtraMouseSample( float frametime, bool active );
+
 	// new
 	virtual void VRMove( float frametime, CUserCmd *cmd );
 	virtual void JoyStickInput( float frametime, CUserCmd *cmd );

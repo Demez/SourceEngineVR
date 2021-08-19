@@ -2,6 +2,7 @@
 #include "vr_internal.h"
 #include "vr.h"
 #include "filesystem.h"
+#include "tier1/fmtstr.h"
 
 #if DXVK_VR
 #include "vr_dxvk.h"
@@ -23,6 +24,7 @@ IShaderAPI *g_pShaderAPI = 0;
 static CSysModule* g_ShaderHInst;
 static CreateInterfaceFn g_shaderApiFactory;
 extern bool g_VRSupported;
+extern ConVar vr_spew_timings;
 
 #if DXVK_VR
 
@@ -98,16 +100,20 @@ void VRInterface::WaitGetPoses()
     g_VRInt.WaitGetPoses();
 }
 
+// dumb
 void VRInterface::UpdatePoses()
 {
     if ( !g_VR.active )
         return;
 
-    g_VR.WaitGetPoses();
+    g_VR.UpdateInput();
 }
 
 static void HandleSubmitError( vr::EVRCompositorError error )
 {
+    if ( vr_spew_timings.GetBool() )
+        DevMsg("[VR] CALLED SUBMIT\n");
+
     if ( error != vr::VRCompositorError_None )
     {
         const char* errorMsg = "";
@@ -244,6 +250,15 @@ void VRSystemInternal::WaitGetPoses()
     if ( error != vr::VRCompositorError_None )
     {
         Warning( "[VR] vr::VRCompositor()->WaitGetPoses failed!\n" );
+    }
+
+    if ( vr_spew_timings.GetBool() )
+    {
+        VMatrix mat = g_VR.OVRToSrcCoords( VMatrixFrom34( g_VRInt.poses[0].mDeviceToAbsoluteTracking.m ) );
+        QAngle ang;
+        MatrixToAngles( mat, ang );
+
+        DevMsg( "[VR] CALLED WAITGETPOSES INTERNAL - HMD ANG: %s\n", VecToString(ang) );
     }
 
     g_pOVRInput->UpdateActionState( activeActionSets, sizeof(vr::VRActiveActionSet_t), activeActionSetCount );

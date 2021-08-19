@@ -8,6 +8,7 @@
 
 #include "mathlib/vmatrix.h"
 #include "mathlib/mathlib.h"
+#include "tier1/fmtstr.h"
 
 #include "vr_player_shared.h"
 
@@ -28,6 +29,7 @@ ConVar vr_interp_trackers("vr_interp_trackers", "0.1");
 
 ConVar vr_tracker_rotation("vr_tracker_rotation", "1", FCVAR_ARCHIVE, "Rotate the tracker models from direct compiling of steamvr device models");
 
+extern ConVar vr_spew_timings;
 
 // ==============================================================
 
@@ -269,6 +271,11 @@ void CVRTracker::UpdateTracker(CmdVRTracker& cmdTracker)
     playerOrigin.z += m_pPlayer->VRHeightOffset();
 
     SetAbsOrigin(playerOrigin + m_posOffset);
+
+    if ( IsHeadset() && vr_spew_timings.GetBool() )
+    {
+        DevMsg( "[VR] %s UPDATED HMD TRACKER - ANG: %s\n", IsServerDll() ? "SV" : "CL", VecToString(m_absAng) );
+    }
 
 #ifdef CLIENT_DLL
     if ( !IsHeadset() )

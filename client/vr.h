@@ -202,7 +202,7 @@ public:
 
 	void                        Submit( ITexture* rtEye, VREye eye );
 	void                        Submit( ITexture* leftEye, ITexture* rightEye );
-	void                        WaitGetPoses();
+	void                        UpdateInput();
 
 // these are only private because they really should not be accessed outside of the VRSystem class
 private:

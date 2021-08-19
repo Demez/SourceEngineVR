@@ -706,6 +706,11 @@ void CVRRenderer::PreRender()
 	}
 
 	m_renderViewCount = 0;
+
+	if ( DrawingVREyes() )
+		m_totalRenderViews = vr_desktop_eye.GetInt() == 3 ? 3 : 2;
+	else
+		m_totalRenderViews = 1;
 }
 
 
@@ -1059,6 +1064,14 @@ CachedRenderInfo_t* CVRRenderer::CreateRenderInfo()
 	}
 
 	i++;
+	
+	// yes this has actually occured a few times for some reason
+	// might just be due to it not being finished yet though
+	if ( i >= m_renderInfos.Count() )
+	{
+		Error("wtf out of sync CachedRenderInfo_t's ?????\n");
+	}
+
 	return m_renderInfos[i];
 }
 
