@@ -22,15 +22,13 @@ ConVar vr_dbg_pickup("vr_dbg_pickup", "1", FCVAR_CHEAT | FCVAR_REPLICATED);
 
 #define VR_PICKUP_PARTITION 1
 
-ConVar vr_pickup_damp("vr_pickup_damp", "0.5", FCVAR_REPLICATED);
-ConVar vr_pickup_speed("vr_pickup_speed", "250", FCVAR_REPLICATED);
-ConVar vr_pickup_angular("vr_pickup_angular", "3600", FCVAR_REPLICATED);
-ConVar vr_pickup_damp_speed("vr_pickup_damp_speed", "500", FCVAR_REPLICATED);
-ConVar vr_pickup_damp_angular("vr_pickup_damp_angular", "3600", FCVAR_REPLICATED);
+static ConVar vr_pickup_damp("vr_pickup_damp", "0.5", FCVAR_REPLICATED);
+static ConVar vr_pickup_speed("vr_pickup_speed", "250", FCVAR_REPLICATED);
+static ConVar vr_pickup_angular("vr_pickup_angular", "3600", FCVAR_REPLICATED);
+static ConVar vr_pickup_damp_speed("vr_pickup_damp_speed", "500", FCVAR_REPLICATED);
+static ConVar vr_pickup_damp_angular("vr_pickup_damp_angular", "3600", FCVAR_REPLICATED);
 
 ConVar vr_pointer_lerp("vr_pointer_lerp", "0.2", FCVAR_REPLICATED);
-
-
 
 extern CMoveData* g_pMoveData;
 
@@ -46,10 +44,9 @@ BEGIN_SIMPLE_DATADESC( vr_shadowcontrol_params_t )
 END_DATADESC()
 
 
-const float DEFAULT_MAX_ANGULAR = 360.0f * 10.0f;
-const float REDUCED_CARRY_MASS = 1.0f;
-
-const int PALM_DIR_MULT = 4;
+static const float DEFAULT_MAX_ANGULAR = 360.0f * 10.0f;
+static const float REDUCED_CARRY_MASS = 1.0f;
+static const int   PALM_DIR_MULT = 4;
 
 
 CVRController::CVRController(): CVRTracker()

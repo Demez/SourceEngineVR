@@ -53,6 +53,8 @@ public:
 	virtual const Vector&           GetPlayerMins() const;
 	virtual const Vector&           GetPlayerMaxs() const;*/
 
+	virtual	void                    DecayPunchAngle();
+
 	virtual void                    ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMove );
 	virtual void                    PlayerMove();
 

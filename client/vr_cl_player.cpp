@@ -792,12 +792,12 @@ void C_VRBasePlayer::RecurseApplyBoneTransforms( CVRBoneInfo* boneInfo )
 	matrix3x4_t &boneWrite = boneInfo->GetBoneForWrite();
 	matrix3x4_t &parentBoneWrite = boneInfo->GetParentBoneForWrite();
 
-	/*if ( boneInfo->hasNewAbsPos || boneInfo->hasNewAbsAngles )
+	if ( boneInfo->hasNewAbsPos || boneInfo->hasNewAbsAngles )
 	{
 		AngleMatrix( boneInfo->newAbsAngles, boneWrite );
 		MatrixSetColumn( boneInfo->newAbsPos, 3, boneWrite );
 	}
-	else*/ if ( boneInfo->hasNewCoord )
+	else if ( boneInfo->hasNewCoord )
 	{
 		matrix3x4a_t worldToBone, local;
 		MatrixInvert( boneInfo->GetParent()->GetCoord(), worldToBone );
@@ -870,6 +870,19 @@ void C_VRBasePlayer::RecurseApplyBoneTransforms( CVRBoneInfo* boneInfo )
 
 		if ( boneInfo->drawChildAxis )
 		{
+			matrix3x4_t boneToWorld;
+			ConcatTransforms( m_cameraTransform, boneWrite, boneToWorld );
+
+			Vector absPos;
+			QAngle absAng;
+			MatrixAngles( boneToWorld, absAng, absPos );
+
+			// NDebugOverlay::Axis( absPos, absAng, 3, true, 0.0f );
+			// NDebugOverlay::BoxAngles( absPos, Vector(-1,-1,-1), Vector(1,1,1), absAng, 100, 100, 255, 2, 0.0 );
+		}
+
+		if ( boneInfo->drawChildAxis )
+		{
 			Vector origin;
 			QAngle angles;
 			MatrixAngles( boneWrite, angles );
@@ -921,6 +934,7 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 	cameraAngles.z = 0.0;
 
 	// cameraOrigin.z -= 40;
+	cameraOrigin.z += VRHeightOffset();
 	
 	AngleMatrix( cameraAngles, newTransform );
 
@@ -952,6 +966,11 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 	MatrixSetColumn( cameraOrigin, 3, newTransform );
 	BaseClass::BuildTransformations( hdr, pos, q, newTransform, boneMask, boneComputed );
 
+	m_cameraTransform = newTransform;
+
+	engine->Con_NPrintf( 40, "m_cameraTransform origin %s", VecToString( cameraOrigin ) );
+	engine->Con_NPrintf( 41, "m_cameraTransform ang %s", VecToString( cameraAngles ) );
+
 	for (int i = 0; i < m_boneInfoList.Count(); i++)
 	{
 		CVRBoneInfo* boneInfo = m_boneInfoList[i];
@@ -968,6 +987,9 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 		// RecurseApplyBoneTransforms( GetRootBoneInfo( pTracker ) );
 	}
 
+	// Do the hip and legs here next, but check if we have any trackers for them just in case
+
+	// finally, do the rest of the trackers
 	for (int i = 0; i < m_VRTrackers.Count(); i++)
 	{
 		CVRTracker* pTracker = m_VRTrackers[i];
@@ -998,7 +1020,7 @@ void C_VRBasePlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quatern
 		}
 		else
 		{
-			BuildTrackerTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, pTracker );
+			BuildTrackerTransformations( hdr, pos, q, m_cameraTransform, boneMask, boneComputed, pTracker );
 
 			if ( pTracker->IsHand() )
 			{
@@ -1106,75 +1128,6 @@ void C_VRBasePlayer::UpdateBoneInformation( CStudioHdr *hdr )
 			GetBoneInfo(iBoneParent)->childBones.AddToTail( boneInfo );
 		}
 	}
-}
-
-
-//-----------------------------------------------------------------------------
-// Purpose: In meathook mode, fix the bone transforms to hang the user's own
-//			avatar under the camera.
-//-----------------------------------------------------------------------------
-void C_VRBasePlayer::BuildFirstPersonMeathookTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed, const char *pchHeadBoneName )
-{
-#if ENGINE_CSGO || ENGINE_2013 || ENGINE_TF2
-	int iHead = LookupBone( pchHeadBoneName );
-	if ( iHead == -1 )
-	{
-		return;
-	}
-
-	return; 
-
-	matrix3x4_t &mHeadTransform = GetBoneForWrite( iHead );
-
-	// "up" on the head bone is along the negative Y axis - not sure why.
-	//Vector vHeadTransformUp ( -mHeadTransform[0][1], -mHeadTransform[1][1], -mHeadTransform[2][1] );
-	//Vector vHeadTransformFwd ( mHeadTransform[0][1], mHeadTransform[1][1], mHeadTransform[2][1] );
-	Vector vHeadTransformTranslation ( mHeadTransform[0][3], mHeadTransform[1][3], mHeadTransform[2][3] );
-
-
-	// Find out where the player's head (driven by the HMD) is in the world.
-	// We can't move this with animations or effects without causing nausea, so we need to move
-	// the whole body so that the animated head is in the right place to match the player-controlled head.
-	Vector vHeadUp;
-	Vector vRealPivotPoint;
-
-	VMatrix mWorldFromMideye;
-	mWorldFromMideye.SetupMatrixOrgAngles( EyePosition(), EyeAngles() );
-
-	// What we do here is:
-	// * Take the required eye pos+orn - the actual pose the player is controlling with the HMD.
-	// * Go downwards in that space by cl_meathook_neck_pivot_ingame_* - this is now the neck-pivot in the game world of where the player is actually looking.
-	// * Now place the body of the animated character so that the head bone is at that position.
-	// The head bone is the neck pivot point of the in-game character.
-
-	Vector vRealMidEyePos = mWorldFromMideye.GetTranslation();
-	vRealPivotPoint = vRealMidEyePos - ( mWorldFromMideye.GetUp() * cl_meathook_neck_pivot_ingame_up.GetFloat() ) - ( mWorldFromMideye.GetForward() * cl_meathook_neck_pivot_ingame_fwd.GetFloat() );
-
-	Vector vDeltaToAdd = vRealPivotPoint - vHeadTransformTranslation;
-
-	// Now add this offset to the entire skeleton.
-	/*for (int i = 0; i < hdr->numbones(); i++)
-	{
-		// Only update bones reference by the bone mask.
-		if ( !( hdr->boneFlags( i ) & boneMask ) )
-		{
-			continue;
-		}
-		matrix3x4_t& bone = GetBoneForWrite( i );
-		Vector vBonePos;
-		MatrixGetTranslation ( bone, vBonePos );
-		vBonePos += vDeltaToAdd;
-		MatrixSetTranslation ( vBonePos, bone );
-	}*/
-
-	// Then scale the head to zero, but leave its position - forms a "neck stub".
-	// This prevents us rendering junk all over the screen, e.g. inside of mouth, etc.
-	if ( IsLocalPlayer() )
-	{
-		MatrixScaleByZero( mHeadTransform );
-	}
-
-#endif
 }
 
 
@@ -1325,9 +1278,9 @@ void C_VRBasePlayer::BuildTrackerTransformations( CStudioHdr *hdr, Vector *pos, 
 }
 
 
-void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, CVRBoneInfo* handBoneInfo, CVRBoneInfo* clavicleBoneInfo )
+void C_VRBasePlayer::BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, CVRBoneInfo* handBoneInfo, CVRBoneInfo* clavicleBoneInfo  )
 {
-	// lazy, should do this on new model
+	// lazy, should do this on new model and if ik is enabled
 	if ( !g_VRIK.UpdateArm( this, pTracker, handBoneInfo, clavicleBoneInfo ) )
 	{
 		g_VRIK.CreateArmNodes( this, pTracker, handBoneInfo, clavicleBoneInfo );

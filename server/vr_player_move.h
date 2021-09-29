@@ -1,5 +1,3 @@
-#ifndef VR_PLAYER_MOVE_H
-#define VR_PLAYER_MOVE_H
 #pragma once
 
 
@@ -27,4 +25,3 @@ public:
 };
 
 
-#endif // VR_PLAYER_MOVE_H

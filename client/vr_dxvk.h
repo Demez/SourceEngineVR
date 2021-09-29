@@ -31,6 +31,8 @@ public:
 	virtual void SetRenderTargetActive( bool enabled ) = 0;
 	virtual void NextCreateTextureIsEye( vr::EVREye eye ) = 0;
 
+	virtual void SetMultiSampleEnabled( bool enabled ) = 0;
+
 	virtual void StartFrame() = 0;
 };
 

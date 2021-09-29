@@ -165,25 +165,96 @@ struct VRNodeUserData
 static void ApplyNodesToBones(struct ik_node_t* ikNode)
 {
 	VRNodeUserData* node = (VRNodeUserData*)ikNode->user_data;
+	CVRBoneInfo* boneInfo = node->boneInfo;
+	C_VRBasePlayer* pPlayer = node->pPlayer;
 
 	Vector absPos;
 	QAngle absAng;
 
-	QAngle plyAng(0, node->pPlayer->GetAbsAngles().y, 0);
+	Vector bonePos = VR_VecToSrc(ikNode->position);
+	QAngle boneAng = VR_QuatToAngSrc(ikNode->rotation);
 
-	LocalToWorld( node->pPlayer->GetAbsOrigin(), plyAng, VR_VecToSrc(ikNode->position), VR_QuatToAngSrc(ikNode->rotation), absPos, absAng );
+	QAngle plyAng(0, pPlayer->GetAbsAngles().y, 0);
 
+	// LocalToWorld( pPlayer->m_cameraTransform, plyAng, VR_VecToSrc(ikNode->position), VR_QuatToAngSrc(ikNode->rotation), absPos, absAng );
+
+	/*matrix3x4_t bonematrix;
+	matrix3x4_t boneToWorld;
+	AngleMatrix( boneAng, bonePos, bonematrix );
+
+	ConcatTransforms( node->pPlayer->m_cameraTransform, bonematrix, boneToWorld );
+
+	MatrixAngles( boneToWorld, absAng, absPos );
+
+
+	matrix3x4_t matBone, matBoneToWorld;
+
+	AngleMatrix( boneAng, matBone );
+	MatrixSetColumn( bonePos, 3, matBone );
+
+	ConcatTransforms( node->pPlayer->m_cameraTransform, matBone, matBoneToWorld );
+
+	MatrixAngles( matBoneToWorld, absAng, absPos );*/
+
+
+
+	matrix3x4a_t matBone;
+
+	AngleMatrix( boneAng, matBone );
+	MatrixSetColumn( bonePos, 3, matBone );
+
+
+	matrix3x4a_t matBoneToWorld2;
+
+	if ( boneInfo->parentIndex == -1 ) 
+	{
+		ConcatTransforms( pPlayer->m_cameraTransform, matBone, matBoneToWorld2 );
+	} 
+	else
+	{
+		ConcatTransforms_Aligned( boneInfo->GetParentBoneForWrite(), matBone, matBoneToWorld2 );
+
+		//CVRBoneInfo* parentInfo = boneInfo->GetParent();
+
+		/*while (parentInfo->GetParent() != nullptr)
+		{
+			ConcatTransforms_Aligned( parentInfo->GetParentBoneForWrite(), matBoneToWorld2, matBoneToWorld2 );
+
+			ConcatTransforms_Aligned( parentInfo->GetParentBoneForWrite(), matBone, matBoneToWorld2 );
+			parentInfo = parentInfo->GetParent();
+		}*/
+	}
+
+
+	MatrixAngles( matBoneToWorld2, absAng, absPos );
+
+
+
+	// LocalToWorld( node->pPlayer->m_cameraTransform, bonePos, boneAng, absPos, absAng );
+
+	// make it relative to the parent bone world pos first?
+	// LocalToWorld( node->boneInfo->parentStudioBone->poseToBone, bonePos, boneAng, absPos, absAng );
+	//LocalToWorld( node->boneInfo->studioBone->poseToBone, bonePos, boneAng, absPos, absAng );
+	
+	// now make that relative to the camera transform?
+	// LocalToWorld( node->pPlayer->m_cameraTransform, absPos, absAng, absPos, absAng );
+	//LocalToWorld( node->pPlayer->GetOriginViewOffset(), node->pPlayer->GetAbsAngles(), absPos, absAng, absPos, absAng );
+	// LocalToWorld( node->pPlayer->GetOriginViewOffset(), node->pPlayer->GetAbsAngles(), bonePos, boneAng, absPos, absAng );
+
+
+	// NDebugOverlay::Axis( absPos, absAng, 3, true, 0.0f );
+	NDebugOverlay::BoxAngles( absPos, Vector(-1,-1,-1), Vector(1,1,1), absAng, 255, 100, 100, 5, 0.0 );
 
 
 	int pos = node->pTracker->IsLeftHand() ? 15 : 24;
 	// engine->Con_NPrintf( pos + ikNode->guid, "%s Target Node pos: %s", node->pTracker->IsLeftHand() ? "L" : "R", VecToString(absPos) );
 	engine->Con_NPrintf( pos + ikNode->guid + 3, "%s Target Node ang: %s", node->pTracker->IsLeftHand() ? "L" : "R", VecToString(absAng) );
 
-	// node->boneInfo->SetAbsPos( absPos );
-	// node->boneInfo->SetAbsAng( absAng );
+	node->boneInfo->SetAbsPos( absPos );
+	node->boneInfo->SetAbsAng( absAng );
 
-	node->boneInfo->SetTargetPos( VR_VecToSrc(ikNode->position) );
-	node->boneInfo->SetTargetAng( VR_QuatToAngSrc(ikNode->rotation) );
+	// node->boneInfo->SetTargetPos( VR_VecToSrc(ikNode->position) );
+	// node->boneInfo->SetTargetAng( VR_QuatToAngSrc(ikNode->rotation) );
 }
 
 
@@ -264,10 +335,17 @@ void VRIKSystem::SetNodeCoords( C_VRBasePlayer* pPlayer, CVRTracker* pTracker, i
 	if ( !pPlayer->GetHeadset() )
 		return;
 
+	VRNodeUserData* vrNode = (VRNodeUserData*)node->user_data;
+
 	CVRTracker* hmd = pPlayer->GetHeadset();
 
 	Vector finalPos;
 	QAngle finalAng;
+
+	Vector bonePos = boneInfo->studioBone->pos;
+
+	QAngle boneAng;
+	QuaternionAngles( boneInfo->studioBone->quat, boneAng );
 
 	Vector worldBonePos, localBonePos;
 	QAngle worldBoneAng, localBoneAng;
@@ -277,12 +355,52 @@ void VRIKSystem::SetNodeCoords( C_VRBasePlayer* pPlayer, CVRTracker* pTracker, i
 	// worldBoneAng = boneInfo->studioBone->rot.ToQAngle();
 
 	matrix3x4a_t& worldBone = boneInfo->GetBoneForWrite();
+	VMatrix worldBoneMat(worldBone);
+
 	MatrixGetColumn( worldBone, 3, worldBonePos ); 
 	MatrixAngles( worldBone, worldBoneAng );
 
+	Vector playerPos = pPlayer->GetOriginViewOffset();
+
+	matrix3x4a_t matBone, matBoneToWorld;
+
+	AngleMatrix( boneAng, matBone );
+	MatrixSetColumn( bonePos, 3, matBone );
+
+	ConcatTransforms( pPlayer->m_cameraTransform, matBone, matBoneToWorld );
+
+	//MatrixAngles( matBoneToWorld, finalAng, finalPos );
+
+
+
+
+	matrix3x4a_t matBoneLocal;
+
+	if ( boneInfo->parentIndex == -1 ) 
+	{
+		ConcatTransforms( pPlayer->m_cameraTransform, matBone, matBoneLocal );
+		MatrixAngles( matBoneLocal, finalAng, finalPos );
+	} 
+	else
+	{
+		//WorldToLocal( worldBone, boneInfo->GetParentBoneForWrite(), finalPos, finalAng );
+		WorldToLocal( boneInfo->GetParentBoneForWrite(), worldBone, finalPos, finalAng );
+
+		//ConcatTransforms_Aligned( boneInfo->GetParentBoneForWrite(), matBone, matBoneLocal );
+	}
+
+
+
+
+
+
+	// WorldToLocal( pPlayer->m_cameraTransform, worldBone, finalPos, finalAng );
+
+
+
 	// QAngle hmdAng(0, hmd->GetAbsAngles().y, 0);
-	QAngle hmdAng(0, 0, 0);
-	// WorldToLocal( hmd->GetAbsOrigin(), hmdAng, worldBonePos, hmdAng, localBonePos, localBoneAng );
+	// QAngle hmdAng(0, 0, 0);
+	// WorldToLocal( playerPos, pPlayer->GetAbsAngles(), worldBonePos, worldBoneAng, localBonePos, localBoneAng );
 	// QAngle plyAng(0, pPlayer->GetAbsAngles().y, 0);
 	// WorldToLocal( pPlayer->GetAbsOrigin(), hmdAng, worldBonePos, hmdAng, localBonePos, localBoneAng );
 
@@ -290,18 +408,22 @@ void VRIKSystem::SetNodeCoords( C_VRBasePlayer* pPlayer, CVRTracker* pTracker, i
 	// WorldToLocal( rootBone->pos, hmdAng, boneInfo->studioBone->pos, hmdAng, localBonePos, localBoneAng );
 
 	// idk if i need anything else?
-	finalPos = localBonePos;
-	finalAng = localBoneAng;
+	// finalPos = localBonePos;
+	// finalAng = localBoneAng;
+
+	//MatrixGetColumn( boneInfo->studioBone->poseToBone, 3, finalPos );
+	//MatrixAngles( boneInfo->studioBone->poseToBone, finalAng );
 
 	node->position = VR_VecToIK( finalPos );    // ik.vec3.vec3(0, 1, 0);
 	node->rotation = VR_AngToQuatIK( finalAng );  // ik.quat.quat(1, 0, 0, 0);
 
 	// !!!! WORKS FOR POSITION !!!!
+	// ah, i know why this works, it's because each studioBone pos is relative to the parent bone
 
-	finalPos = boneInfo->studioBone->pos;
+	//finalPos = boneInfo->studioBone->pos;
 	// finalPos.z += -vr_cl_headheight.GetFloat(); // + hmd->m_pos.z;
-	node->position = VR_VecToIK( finalPos );
-	node->rotation = VR_QuatToIK( boneInfo->studioBone->quat );
+	//node->position = VR_VecToIK( finalPos );
+	//node->rotation = VR_QuatToIK( boneInfo->studioBone->quat );
 }
 
 
@@ -356,9 +478,6 @@ bool VRIKSystem::UpdateArm( C_VRBasePlayer* pPlayer, CVRTracker* pTracker, CVRBo
 	// ikInfo->m_nodes[1]->rotation = VR_QuatToIK( handInfo->studioBone->quat );  // ik.quat.quat(1, 0, 0, 0);
 	// ikInfo->m_nodes[2]->rotation = VR_AngToQuatIK( handInfo->studioBone->rot.ToQAngle() );  // ik.quat.quat(1, 0, 0, 0);
 
-	engine->Con_NPrintf( pTracker->IsLeftHand() ? 33 : 34, "%s hand node pos %s", pTracker->IsLeftHand() ? "L" : "R", VecToString( ikInfo->m_nodes[2]->position ) );
-	engine->Con_NPrintf( pTracker->IsLeftHand() ? 36 : 37, "%s hand tracker pos %s", pTracker->IsLeftHand() ? "L" : "R", VecToString( pTracker->m_posOffset ) );
-
 	ikInfo->m_solver->tolerance = 1e-3;
 	// ikInfo->m_solver->tolerance = 0.9;
 
@@ -389,7 +508,7 @@ bool VRIKSystem::UpdateArm( C_VRBasePlayer* pPlayer, CVRTracker* pTracker, CVRBo
 
 	// QAngle plyAng(0, hmd->GetAbsAngles().y, 0);
 	QAngle plyAng(0, 0, 0);
-	WorldToLocal( hmd->GetAbsOrigin(), plyAng, pTracker->GetAbsOrigin(), pTracker->GetAbsAngles(), finalPos, finalAng );
+	// WorldToLocal( hmd->GetAbsOrigin(), plyAng, pTracker->GetAbsOrigin(), pTracker->GetAbsAngles(), finalPos, finalAng );
 
 	finalAng = pTracker->m_absAng;
 
@@ -403,6 +522,22 @@ bool VRIKSystem::UpdateArm( C_VRBasePlayer* pPlayer, CVRTracker* pTracker, CVRBo
 
 	ik.solver.solve( ikInfo->m_solver );
 	ik.solver.iterate_affected_nodes( ikInfo->m_solver, ApplyNodesToBones );
+
+	engine->Con_NPrintf( pTracker->IsLeftHand() ? 33 : 34, "%s hand node pos %s", pTracker->IsLeftHand() ? "L" : "R", VecToString( ikInfo->m_nodes[2]->position ) );
+	engine->Con_NPrintf( pTracker->IsLeftHand() ? 36 : 37, "%s hand tracker pos %s", pTracker->IsLeftHand() ? "L" : "R", VecToString( pTracker->m_posOffset ) );
+
+	for (int i = 0; i < 2; i++)
+	{
+		Vector pos = VR_VecToSrc(ikInfo->m_nodes[i]->position);
+		QAngle ang = VR_QuatToAngSrc(ikInfo->m_nodes[i]->rotation);
+
+		// is this right?
+		// NDebugOverlay::Axis( pPlayer->GetOriginViewOffset() + pos, ang, 3, true, 0.0f );
+		NDebugOverlay::BoxAngles( pPlayer->GetOriginViewOffset() + pos, Vector(-1,-1,-1), Vector(1,1,1), ang, 100, 100, 255, 2, 0.0 );
+		// NDebugOverlay::Axis( hmd->GetAbsOrigin() + pos, ang, 3, true, 0.0f );
+	}
+
+	NDebugOverlay::BoxAngles( pPlayer->GetOriginViewOffset() + finalPos, Vector(-1,-1,-1), Vector(1,1,1), finalAng, 100, 255, 100, 2, 0.0 );
 
 	return true;
 }

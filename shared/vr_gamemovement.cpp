@@ -72,6 +72,19 @@ const Vector& CVRGameMovement::GetPlayerMaxs( void ) const
 }*/
 
 
+void CVRGameMovement::DecayPunchAngle()
+{
+	if ( GetVRPlayer()->m_bInVR )
+	{
+		player->m_Local.m_vecPunchAngle = vec3_angle;
+		player->m_Local.m_vecPunchAngleVel = vec3_angle;
+		return;
+	}
+
+	BaseClass::DecayPunchAngle();
+}
+
+
 // ideally this could run on the client without going through the prediction code,
 // but idk where i would do that on client and server right now
 void CVRGameMovement::PlayerMove()

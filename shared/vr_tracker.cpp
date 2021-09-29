@@ -267,8 +267,7 @@ void CVRTracker::UpdateTracker(CmdVRTracker& cmdTracker)
     m_absAng = m_ang = trackerAng;
     m_absAng.y += viewRotation;
 
-    Vector playerOrigin = m_pPlayer->GetAbsOrigin();
-    playerOrigin.z += m_pPlayer->VRHeightOffset();
+    Vector playerOrigin = m_pPlayer->GetOriginViewOffset();
 
     SetAbsOrigin(playerOrigin + m_posOffset);
 

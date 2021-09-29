@@ -38,17 +38,17 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-ConVar vr_autostart("vr_autostart", "0", FCVAR_ARCHIVE, "auto start vr on level load");
-ConVar vr_mainmenu("vr_mainmenu", "1", FCVAR_ARCHIVE);
-ConVar vr_renderthread("vr_renderthread", "0", FCVAR_ARCHIVE, "use a separate thread for rendering in vr on the main menu or while loading a level");
+static ConVar vr_autostart("vr_autostart", "0", FCVAR_ARCHIVE, "auto start vr on level load");
+static ConVar vr_mainmenu("vr_mainmenu", "1", FCVAR_ARCHIVE);
+static ConVar vr_renderthread("vr_renderthread", "0", FCVAR_ARCHIVE, "use a separate thread for rendering in vr on the main menu or while loading a level");
 
-ConVar vr_clamp_res("vr_clamp_res", "0", FCVAR_CLIENTDLL, "clamp the resolution to the screen size until the render clamping issue is figured out");
-ConVar vr_scale_override("vr_scale_override", "42.5");  // anything lower than 0.25 doesn't look right in the headset
-ConVar vr_dbg_rt_res_scale("vr_dbg_rt_res_scale", "2", FCVAR_CLIENTDLL);
-ConVar vr_eye_height("vr_eye_h", "0", FCVAR_CLIENTDLL, "Override the render target height, 0 to disable");
-ConVar vr_eye_width("vr_eye_w", "0", FCVAR_CLIENTDLL, "Override the render target width, 0 to disable");
+static ConVar vr_clamp_res("vr_clamp_res", "0", FCVAR_CLIENTDLL, "clamp the resolution to the screen size until the render clamping issue is figured out");
+static ConVar vr_scale_override("vr_scale_override", "42.5");  // anything lower than 0.25 doesn't look right in the headset
+static ConVar vr_dbg_rt_res_scale("vr_dbg_rt_res_scale", "2", FCVAR_CLIENTDLL);
+static ConVar vr_eye_height("vr_eye_h", "0", FCVAR_CLIENTDLL, "Override the render target height, 0 to disable");
+static ConVar vr_eye_width("vr_eye_w", "0", FCVAR_CLIENTDLL, "Override the render target width, 0 to disable");
 
-ConVar vr_haptic("vr_haptic", "1", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Enable/Disable Haptic Feedback/Vibrations");
+static ConVar vr_haptic("vr_haptic", "1", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Enable/Disable Haptic Feedback/Vibrations");
 
 ConVar vr_waitgetposes_test("vr_waitgetposes_test", "0", FCVAR_CLIENTDLL, "testing where WaitGetPoses is called");
 
@@ -74,7 +74,8 @@ IDXVK_VRSystem*             g_pDXVK = NULL;
 static InputContextHandle_t g_vrInputContext = INPUT_CONTEXT_HANDLE_INVALID;
 
 // 10.0f/0.254f;
-const double DEFAULT_VR_SCALE = 39.37012415030996;
+// can't use constexpr here?
+static const double DEFAULT_VR_SCALE = 39.37012415030996;
 
 bool g_VRSupported;
 
@@ -209,8 +210,22 @@ const char* GetTrackerModelName( uint32_t deviceIndex )
     return strdup(modelPath);
 }
 
+
+// TEMP HACK AGAIN, don't have all the models ported yet aaaa
+static ConVar vr_trackermodelhack("vr_trackermodelhack", "1", FCVAR_ARCHIVE, "TEMP: force tracker model to rift cv1 model");
+
+
 const char* VRHostTracker::GetModelName()
 {
+    if ( vr_trackermodelhack.GetBool() )
+    {
+        if ( type == EVRTracker::LHAND )
+            return "models/vr/oculus_cv1_controller_left.mdl";
+
+        if ( type == EVRTracker::RHAND )
+            return "models/vr/oculus_cv1_controller_right.mdl";
+    }
+
     return GetTrackerModelName( deviceIndex );
 
     // obsolete code path? could only be useful for networking it
@@ -744,15 +759,11 @@ void VRSystem::UpdateTrackers()
 
                 Msg("[VR] Tracker connected: %s\n", tracker->name);
 
-                // if ( tracker->type == EVRTracker::HMD || tracker->type == EVRTracker::LHAND || tracker->type == EVRTracker::RHAND )
                 if ( deviceIndex != vr::k_unTrackedDeviceIndexInvalid )
                 {
                     char propName[256];
                     GetTrackingPropString( propName, 256, vr::Prop_ControllerType_String, deviceIndex );
                     DevMsg(" - Prop_ControllerType  = %s\n", propName);
-
-                    // GetTrackingPropString( propName, 256, vr::Prop_TrackingSystemName_String, deviceIndex );
-                    // DevMsg(" - Prop_TrackingSystemName = %s\n", propName);
 
                     GetTrackingPropString( propName, 256, vr::Prop_RenderModelName_String, deviceIndex );
                     DevMsg(" - Prop_RenderModelName = %s\n", propName);
@@ -912,28 +923,6 @@ void VRSystem::UpdateActions()
 #undef VR_NEW_ACTION
 
 
-void VRSystem::GetFOVOffset( VREye eye, float &aspectRatio, float &hFov )
-{
-	vr::HmdMatrix44_t proj = g_pOVR->GetProjectionMatrix( ToOVREye(eye), 1, 10 );
-	float xscale = proj.m[0][0];
-	float xoffset = proj.m[0][2];
-	float yscale = proj.m[1][1];
-	float yoffset = proj.m[1][2];
-	float tan_px = fabsf((1.0f - xoffset) / xscale);
-	float tan_nx = fabsf((-1.0f - xoffset) / xscale);
-	float tan_py = fabsf((1.0f - yoffset) / yscale);
-	float tan_ny = fabsf((-1.0f - yoffset) / yscale);
-	float w = tan_px + tan_nx;
-	float h = tan_py + tan_ny;
-
-	// hFov = atan(w / 2.0f) * 180 / 3.141592654 * 2;
-	hFov = atan(w / 2.0f) * 180 / 3.141592654 * 2;
-    hFov = RAD2DEG(2.0f * atan(h / 2.0f));
-	//g_verticalFOV = atan(h / 2.0f) * 180 / 3.141592654 * 2;
-	// aspectRatio = w / h;
-}
-
-
 void VRSystem::UpdateViewParams()
 {
 	VRViewParams viewParams;
@@ -990,9 +979,11 @@ void VRSystem::UpdateViewParams()
 
     if ( active )
     {
-        // uhh
         g_VRInt.CalcTextureBounds( viewParams.aspect, viewParams.fov );
-        GetFOVOffset( VREye::Left, viewParams.aspect, viewParams.fov );
+    }
+    else if ( vr_dbg_rt_test.GetBool() )
+    {
+        viewParams.aspect = (float)width / (float)height;
     }
 
     if ( vr_eye_width.GetFloat() > 0 || vr_eye_height.GetFloat() > 0 )
@@ -1125,6 +1116,14 @@ bool VRSystem::Disable()
 {
     if ( !m_inMap && vr_renderthread.GetBool() )
         StopThread();
+
+    // wait to avoid crash from dxvk
+    std::unique_lock<std::mutex> lock(g_VRInt.m_mutex);
+
+    if ( g_VRInt.m_inSubmitAndPosesCall && active )
+    {
+        g_VRInt.m_cv.wait(lock);
+    }
 
 	active = false;
 
@@ -1263,6 +1262,22 @@ double VRSystem::GetScale()
         scale *= vr_scale.GetFloat();
 
     return scale;
+}
+
+
+void VRSystem::WaitForPosesLock()
+{
+    if ( !active )
+        return;
+
+    if ( g_VRInt.m_inSubmitAndPosesCall )
+    {
+        // for now just sleep to avoid a potential crash until i add a proper lock for wating for that call lmao
+        DevMsg( "[VR] Sleep time: %.6f\n", gpGlobals->frametime * 1000.f );
+
+        // Sleep( 150 );
+        Sleep( gpGlobals->frametime * 1000.f );
+    }
 }
 
 

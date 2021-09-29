@@ -43,6 +43,7 @@ public:
 #endif
 	virtual void                    OnVREnabled();
 	virtual void                    OnVRDisabled();
+	inline virtual bool             InVR() { return m_bInVR; }
 
 	virtual void                    PreThink();
 	virtual void                    PostThink();
@@ -50,6 +51,8 @@ public:
 	virtual Vector                  Weapon_ShootPosition();
 	virtual QAngle                  GetWeaponShootAng();
 	virtual Vector                  GetWeaponShootDir();
+	virtual void                    ViewPunch( const QAngle &angleOffset );
+	virtual void                    DoMuzzleFlash();
 
 	virtual Vector                  GetAutoaimVector( float flScale );
 
@@ -62,6 +65,9 @@ public:
 	virtual void                    CalculatePlayerBBox();
 	virtual Vector                  EyePosition();
 	virtual const QAngle&           EyeAngles();
+
+	// gets the abs origin with the VRHeightOffset already applied
+	virtual Vector                  GetOriginViewOffset();
 
 	virtual void                    AddViewRotation( float offset );
 	virtual void                    CorrectViewRotateOffset();
@@ -112,6 +118,8 @@ public:
 
 	CNetworkVar( float, m_vrViewRotation );
 	float m_vrViewRotationGame;  // server view rotation changes, separate from client view rotation
+
+	float m_smoothStairsOffset;  // smh my head
 
 	Vector m_minSize;
 	Vector m_maxSize;

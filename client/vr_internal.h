@@ -3,6 +3,8 @@
 #include <openvr.h>
 #include <mathlib/vector.h>
 
+#include <mutex>
+#include <condition_variable>
 #include <d3d9.h>
 #include <d3d11.h>
 
@@ -78,6 +80,11 @@ public:
     void        CalcTextureBounds( float &aspect, float &fov );
 
     // -------------------------------------------------------------------------------------
+
+    // lock testing for dxvk
+    std::mutex m_mutex;
+    std::condition_variable m_cv;
+    bool m_inSubmitAndPosesCall = false;
 
     // openvr saved stuff
     vr::TrackedDevicePose_t poses[vr::k_unMaxTrackedDeviceCount];

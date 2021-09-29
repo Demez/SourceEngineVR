@@ -111,6 +111,8 @@ void VRInterface::UpdatePoses()
 
 static void HandleSubmitError( vr::EVRCompositorError error )
 {
+    g_VRInt.m_inSubmitAndPosesCall = true;
+
     if ( vr_spew_timings.GetBool() )
         DevMsg("[VR] CALLED SUBMIT\n");
 
@@ -245,7 +247,14 @@ void VRSystemInternal::WaitGetPoses()
     if ( !g_VR.active || !vr::VRCompositor() || !g_pOVRInput )
         return;
 
+    std::unique_lock<std::mutex> lock(m_mutex);
+
     vr::EVRCompositorError error = vr::VRCompositor()->WaitGetPoses( poses, vr::k_unMaxTrackedDeviceCount, NULL, 0 );
+
+    m_inSubmitAndPosesCall = false;
+
+    //Let main thread know poses are ready if it is waiting on them
+    m_cv.notify_one();
 
     if ( error != vr::VRCompositorError_None )
     {
@@ -449,16 +458,8 @@ void VRSystemInternal::CalcTextureBounds( float &aspect, float &fov )
     textureBoundsRight.vMin = 0.5f - 0.5f * r_bottom / tanHalfFov.y;
     textureBoundsRight.vMax = 0.5f - 0.5f * r_top / tanHalfFov.y;
 
-    // fov on rift cv1 comes out to be 96 here, a bit too high, 90 seems to be the right value though
-    // also aspect is just calculated at the moment, comes to 0.86 or something here, when diving w/h gets me 0.84
-    // gmod vr returns different values for each (the fov one seems much more accurate, right around 90 fov)
-    // gmod vr also returns like 0.83 for aspect
-
     aspect = tanHalfFov.x / tanHalfFov.y;
-    // fov = 2.0f * RAD2DEG(atan(tanHalfFov.y));
-
-    // fov = RAD2DEG(2.0f * atan(tanHalfFov.y));
-    // fov = RAD2DEG(atan(tanHalfFov.y / 2.0f));
+    fov = 2.0f * RAD2DEG(atanf(tanHalfFov.x));
 }
 
 

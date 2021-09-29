@@ -44,12 +44,27 @@ ConVar vr_always_draw_trackers("vr_always_draw_trackers", "0", FCVAR_CLIENTDLL);
 ConVar vr_draw_trackers("vr_draw_trackers", "1", FCVAR_CLIENTDLL);
 ConVar vr_dbg_point("vr_dbg_point", "1", FCVAR_CHEAT);
 ConVar vr_pointer_width("vr_pointer_width", "1.0", FCVAR_ARCHIVE);
+ConVar vr_fake_ipd("vr_fake_ipd", "1");
 
 extern ConVar vr_pointer_lerp;
 
-CON_COMMAND_F(vr_update_rt, "Force recreate render targets for a different resolution", FCVAR_CLIENTDLL)
+
+void CC_VRSetMSSA( IConVar *var, const char *pOldValue, float flOldValue );
+
+ConVar vr_msaa("vr_msaa", "0", FCVAR_ARCHIVE, "Enable or Disable MSAA in VR, Uses mat_aaquality and mat_antialias", true, 0, true, 1, CC_VRSetMSSA);
+
+void CC_VRSetMSSA( IConVar *var, const char *pOldValue, float flOldValue )
 {
-	// g_VRRenderer.InitEyeRenderTargets();
+#if DXVK_VR
+	if ( g_pDXVK )
+		g_pDXVK->SetMultiSampleEnabled( vr_msaa.GetBool() );
+
+	g_VRRenderer.m_bUpdateRT = true;
+#endif
+}
+
+CON_COMMAND( vr_update_rt, "Force recreate render targets" )
+{
 	g_VRRenderer.m_bUpdateRT = true;
 }
 
@@ -565,8 +580,7 @@ void CVRRenderer::DrawScreen()
 
 	QAngle angles(0, 0, 0);
 
-	// DEMEZ TODO: maybe rotate to point towards head height?
-	// or just have a slider option to rotate it maybe, idk
+	// DEMEZ TODO: have this be facing in front of you, and adjust the position if you look too far away
 	VMatrix mat, rotateMat, outMat;
 	MatrixFromAngles( angles, mat );
 	MatrixBuildRotationAboutAxis( rotateMat, Vector( 0, 1, 0 ), 35 );
@@ -656,21 +670,6 @@ void CVRRenderer::RenderShared()
 
 void CVRRenderer::PostEyeRender( VREye eye )
 {
-	if ( !vr_one_rt_test.GetBool() )
-		return;
-
-	if ( !vr_dbg_rt_test.GetBool() && !m_bUpdateRT && !g_VR.NeedD3DInit() )
-	{
-		g_VR.Submit( leftEye, eye );
-	}
-
-	if ( vr_dbg_rt.GetBool() )
-	{
-		DrawDebugEyeRenderTarget( leftEyeMat, eye == VREye::Left ? 0 : 1 );
-		// DrawDebugEyeRenderTarget( rightEyeMat, 1 );
-		// DrawDebugEyeRenderTarget( leftEyeDepthMat, 2 );
-		// DrawDebugEyeRenderTarget( rightEyeDepthMat, 3 );
-	}
 }
 
 
@@ -689,19 +688,22 @@ CVRTrackerRender* CVRRenderer::GetTrackerRender( VRHostTracker* tracker )
 void CVRRenderer::PreRender()
 {
 	// check tracker count
-	for ( int i = 0; i < g_VR.m_currentTrackers.Count(); i++ )
+	if ( !g_VR.m_inMap )
 	{
-		VRHostTracker* tracker = g_VR.m_currentTrackers[i];
-
-		if ( tracker->type == EVRTracker::HMD )
-			continue;
-
-		if ( !GetTrackerRender( tracker ) )
+		for ( int i = 0; i < g_VR.m_currentTrackers.Count(); i++ )
 		{
-			CVRTrackerRender* trackerRender = new CVRTrackerRender( tracker );
-			trackerRender->LoadModel();
+			VRHostTracker* tracker = g_VR.m_currentTrackers[i];
 
-			m_trackers.AddToTail( trackerRender );
+			if ( tracker->type == EVRTracker::HMD )
+				continue;
+
+			if ( !GetTrackerRender( tracker ) )
+			{
+				CVRTrackerRender* trackerRender = new CVRTrackerRender( tracker );
+				trackerRender->LoadModel();
+
+				m_trackers.AddToTail( trackerRender );
+			}
 		}
 	}
 
@@ -748,55 +750,54 @@ bool CVRRenderer::ShouldDrawTracker( EVRTracker tracker )
 }
 
 
-ConVar vr_ipd_test("vr_ipd_test", "1.0");
+// eye offset from rift cv1, for testing
+static const VMatrix g_fakeVREyeOffsetLeft(
+	1.00000000, 0.00000000, -0.00000000, -0.00000000,
+	0.00000000, 1.00000000, -0.00000000, 1.26126647,
+	-0.00000000, -0.00000000, 1.00000000, 0.00000000,
+	-0.00000000, -0.00000000, 0.00000000, 1.00000000
+);
 
-#define VR_SCALE 39.37012415030996
+static inline void CalcEyeViewMatrix( CViewSetup &eyeView, const VMatrix& matOffset, const Vector& origin, const QAngle& angles )
+{
+	// Move eyes to IPD positions.
+	VMatrix worldMatrix;
+	worldMatrix.SetupMatrixOrgAngles( origin, angles );
+
+	VMatrix worldFromEye = worldMatrix * matOffset;
+
+	// Finally convert back to origin+angles.
+	MatrixAngles( worldFromEye.As3x4(), eyeView.angles, eyeView.origin );
+}
 
 void CVRRenderer::PrepareEyeViewSetup( CViewSetup &eyeView, VREye eye, const Vector& origin, const QAngle& angles )
 {
 	VRViewParams viewParams = g_VR.GetViewParams();
 
-	if ( g_VR.active )
-	{
-		VMatrix matOffset = g_VR.GetMidEyeFromEye( eye );
-
-		// Move eyes to IPD positions.
-		VMatrix worldMatrix;
-		worldMatrix.SetupMatrixOrgAngles( origin, angles );
-
-		VMatrix worldFromEye = worldMatrix * matOffset;
-
-		// Finally convert back to origin+angles.
-		MatrixAngles( worldFromEye.As3x4(), eyeView.angles, eyeView.origin );
-
-		eyeView.width = viewParams.width;
-		eyeView.height = viewParams.height;
-
-		if ( vr_fov_override.GetInt() != 0 )
-			eyeView.fov = vr_fov_override.GetInt();
-		else
-			eyeView.fov = viewParams.fov;
-
-		eyeView.m_flAspectRatio = viewParams.aspect;
-	}
-	else if ( vr_dbg_rt_test.GetBool() )
-	{
-		eyeView.width = viewParams.width;
-		eyeView.height = viewParams.height;
-		eyeView.m_flAspectRatio = (float)eyeView.width / (float)eyeView.height;
-	}
-
+	eyeView.width = viewParams.width;
+	eyeView.height = viewParams.height;
+	eyeView.m_flAspectRatio = viewParams.aspect;
 	eyeView.zNear = vr_nearz.GetFloat();
 
-	// eyeView.m_nUnscaledWidth = eyeView.width;
-	// eyeView.m_nUnscaledHeight = eyeView.height;
+	if ( vr_fov_override.GetInt() != 0 )
+		eyeView.fov = vr_fov_override.GetInt();
+	else
+		eyeView.fov = viewParams.fov;
+
+	if ( g_VR.active )
+	{
+		CalcEyeViewMatrix( eyeView, g_VR.GetMidEyeFromEye( eye ), origin, angles );
+	}
+	else if ( vr_dbg_rt_test.GetBool() && vr_fake_ipd.GetBool() )
+	{
+		VMatrix matOffset = g_fakeVREyeOffsetLeft;
+
+		if ( VREye::Right == eye )
+			matOffset[1][3] -= matOffset[1][3];
+
+		CalcEyeViewMatrix( eyeView, matOffset, origin, angles );
+	}
 }
-
-
-// not sure if RT_SIZE_LITERAL is even needed tbh
-#if !ENGINE_CSGO && !ENGINE_2013
-#define RT_SIZE_LITERAL RT_SIZE_NO_CHANGE
-#endif
 
 
 void CVRRenderer::InitEyeRenderTargets()
@@ -819,6 +820,12 @@ void CVRRenderer::InitEyeRenderTargets()
 		ogMode = tmpMode;
 		mat_queue_mode.SetValue( 0 );
 		return;
+	}
+
+	// wait for dxvk to call this
+	if ( leftEye != NULL || rightEye != NULL )
+	{
+		g_VR.WaitForPosesLock();
 	}
 
 	Msg("[VR] Creating Eye Render Targets\n");
@@ -985,7 +992,6 @@ void CVRRenderer::DrawCroppedView()
 	{
 		CMatRenderContextPtr pRenderContext( materials );
 
-		// crop one of the eyes onto the screen (TODO: setup cropping for width just in case)
 		IMaterial* eyeMat = vr_desktop_eye.GetInt() == 1 ? leftEyeMat : rightEyeMat;
 		VRViewParams viewParams = g_VR.GetViewParams();
 
@@ -995,23 +1001,17 @@ void CVRRenderer::DrawCroppedView()
 		int eyeWidth = rightEye->GetActualWidth();
 		int eyeHeight = rightEye->GetActualHeight();
 
-		float scrAspect = (float)scrWidth / (float)scrHeight;
-		float eyeAspect = (float)eyeWidth / (float)eyeHeight;
+		float outWidth = (float)eyeWidth;
+		float outHeight = outWidth * ((float)scrHeight / (float)scrWidth);
+		float heightOffset = (eyeHeight - outHeight) / 2;
 
-		float heightOffsetMult = (1.0 - (scrAspect * eyeAspect)); //  / 2.0;
-		float heightOffset = (eyeHeight *- heightOffsetMult) / 2.0;
-
-		// hack, this cropping code probably isn't perfect if i need this
-		if ( vr_dbg_rt_test.GetBool() )
-			heightOffset /= (scrAspect/1.5);
-
-		// now crop this to the entire screen
+		// crop one of the eyes onto the screen
 		pRenderContext->DrawScreenSpaceRectangle(
 			eyeMat,
 			0, 0,
 			scrWidth, scrHeight,
 			0, heightOffset,
-			eyeWidth-1, eyeHeight-1 - heightOffset,
+			outWidth-1, heightOffset + outHeight-1,
 			eyeWidth, eyeHeight
 		);
 
@@ -1027,7 +1027,6 @@ void CVRRenderer::DrawDebugEyeRenderTarget( IMaterial* eyeMat, int pos )
 
 	VRViewParams viewParams = g_VR.GetViewParams();
 
-	// draw right eye
 	int width = viewParams.width * vr_dbg_rt_scale.GetFloat();
 	int height = viewParams.height * vr_dbg_rt_scale.GetFloat();
 

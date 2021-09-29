@@ -21,9 +21,16 @@ public:
 
 	CVRBaseWeapon();
 
+	virtual void Equip( CBaseCombatCharacter *pOwner );
+
 #ifdef CLIENT_DLL
+	virtual bool Simulate();
 	virtual bool ShouldDraw();
+
+	virtual void BuildTransformations( CStudioHdr *hdr, Vector *pos, Quaternion *q, const matrix3x4_t &cameraTransform, int boneMask, CBoneBitList &boneComputed );
 #endif
+
+	CVRBasePlayer* GetVRPlayer();
 
 private:
 	CVRBaseWeapon( const CVRBaseWeapon & );

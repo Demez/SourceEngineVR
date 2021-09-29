@@ -20,6 +20,8 @@ extern CMoveData* g_pMoveData;
 
 extern ConVar vr_lefthand;
 extern ConVar vr_spew_timings;
+extern ConVar vr_weaponmodel;
+extern ConVar smoothstairs;
 
 
 IMPLEMENT_NETWORKCLASS( CVRBasePlayerShared, DT_VRBasePlayerShared )
@@ -112,6 +114,17 @@ bool CVRBasePlayerShared::CreateVPhysics()
 
 void CVRBasePlayerShared::OnVREnabled()
 {
+	if ( vr_weaponmodel.GetBool() )
+	{
+		for ( int i = 0; i < MAX_WEAPONS; i++ )
+		{
+			CBaseCombatWeapon* wpn = GetWeapon(i);
+			if ( !wpn )
+				continue;
+
+			wpn->SetModel( wpn->GetWorldModel() );
+		}
+	}
 }
 
 
@@ -119,6 +132,19 @@ void CVRBasePlayerShared::OnVRDisabled()
 {
 	m_VRTrackers.PurgeAndDeleteElements();
 	ClearCmdTrackers();
+
+	if ( vr_weaponmodel.GetBool() )
+	{
+		for ( int i = 0; i < MAX_WEAPONS; i++ )
+		{
+			CBaseCombatWeapon* wpn = GetWeapon(i);
+			if ( !wpn )
+				continue;
+
+			// uhh
+			wpn->SetModel( wpn->GetViewModel() );
+		}
+	}
 }
 
 
@@ -190,6 +216,16 @@ Vector CVRBasePlayerShared::GetWeaponShootDir()
 	AngleVectors( EyeAngles(), &forward );
 	return forward;
 }
+
+void CVRBasePlayerShared::DoMuzzleFlash()
+{
+	if ( !InVR() )
+		return BaseClass::DoMuzzleFlash();
+
+	// just skip the viewmodels getting muzzleflashes
+	BaseClass::BaseClass::DoMuzzleFlash();
+}
+
 
 Vector CVRBasePlayerShared::GetAutoaimVector( float flScale )
 {
@@ -267,6 +303,15 @@ void CVRBasePlayerShared::GetAutoaimVector( autoaim_params_t &params )
 #endif
 
 
+void CVRBasePlayerShared::ViewPunch( const QAngle &angleOffset )
+{
+	if ( m_bInVR )
+		return;
+
+	BaseClass::ViewPunch( angleOffset );
+}
+
+
 const Vector CVRBasePlayerShared::GetPlayerMins( void )
 {
 	if ( !m_bInVR || !GetHeadset() )
@@ -307,7 +352,8 @@ void CVRBasePlayerShared::CalculatePlayerBBox()
 
 float CVRBasePlayerShared::VRHeightOffset()
 {
-	return -(VEC_VIEW.z - GetViewOffset().z);
+	// return -(VEC_VIEW.z - GetViewOffset().z);
+	return (-(VEC_VIEW.z - GetViewOffset().z)) + m_smoothStairsOffset;
 }
 
 
@@ -373,6 +419,14 @@ void CVRBasePlayerShared::CorrectViewRotateOffset()
 		m_vrViewRotation -= 360.0;
 	else if ( m_vrViewRotation < -360.0 )
 		m_vrViewRotation += 360.0;
+}
+
+
+Vector CVRBasePlayerShared::GetOriginViewOffset()
+{
+	Vector origin = GetAbsOrigin();
+	origin.z += VRHeightOffset();
+	return origin;
 }
 
 

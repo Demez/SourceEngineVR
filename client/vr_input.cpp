@@ -431,7 +431,7 @@ int CVRInput::GetButtonBits( bool bResetState )
 
 	m_bits = bits;
 
-	// VRVector1Action* v1PrimaryFire = (VRVector1Action*)g_VR.GetActionByName("vector1_primaryfire");  // wonder what this could be used for
+	// VRVector1Action* v1PrimaryFire = (VRVector1Action*)g_VR.GetActionByName("vector1_primaryfire");  // use for driving later?
 
 	CalcButtonBitsBool("boolean_primaryfire", IN_ATTACK);
 	CalcButtonBitsBool("boolean_secondaryfire", IN_ATTACK2);

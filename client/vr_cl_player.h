@@ -211,7 +211,6 @@ public:
 	virtual void                    BuildTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed );
 	virtual void                    UpdateBoneInformation( CStudioHdr *hdr );
 
-	virtual void                    BuildFirstPersonMeathookTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed, const char *pchHeadBoneName );
 	virtual void                    BuildTrackerTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed, CVRTracker* pTracker );
 
 	virtual void                    BuildArmTransform( CStudioHdr *hdr, CVRTracker* pTracker, CVRBoneInfo* handBoneInfo, CVRBoneInfo* clavicleBoneInfo );
@@ -290,6 +289,8 @@ public:
 
 	EVRBoneSystem                   m_boneSystem;
 	CUtlMap< EVRBone, const char* > m_bones;
+	
+	matrix3x4_t                     m_cameraTransform;
 
 	// should probably be abstracted, but that's more work
 	VRIKInfo* m_ikLArm;

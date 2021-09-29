@@ -143,6 +143,7 @@ public:
 	VMatrix                     OVRToSrcCoords( const VMatrix& vortex, bool scale = true );
 	bool                        GetEyeProjectionMatrix( VMatrix *pResult, VREye eEye, float zNear, float zFar, float fovScale );
 	VMatrix                     GetMidEyeFromEye( VREye eEye );
+	void                        WaitForPosesLock();
 
 	// ========================================
 	// convenience functions
@@ -182,7 +183,6 @@ public:
 	VRBaseAction*               GetActionByHandle( vr::VRActionHandle_t handle );
 
 	VRViewParams                GetViewParams();
-	void                        GetFOVOffset( VREye eye, float &aspectRatio, float &hFov );
 
 	double                      GetScale();
 	void                        SetScale( double newScale );
